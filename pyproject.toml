@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "callsense"
+version = "0.1.0"
+description = "Call Center Intelligence System — LangGraph pipeline for call audio QA, compliance, and reporting"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # orchestration
+    "langgraph>=0.4",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    # LLM providers (all three required by the provider factory)
+    "langchain-openai>=0.2",
+    "langchain-google-genai>=2.0",
+    "langchain-groq>=0.2",
+    # observability
+    "langsmith>=0.1",
+    # speech-to-text
+    "faster-whisper>=1.0",
+    # audio metadata for non-WAV formats
+    "mutagen>=1.47",
+    "soundfile>=0.12",
+    "numpy>=1.26",
+    # data contracts
+    "pydantic>=2.7",
+    # persistence
+    "sqlalchemy>=2.0",
+    # reports
+    "reportlab>=4.1",
+    # ui — pinned to 5.x: the rubric names Gradio 5.x and the Milestone 6 API guidance
+    # (gr.Audio sources, .click().then().then(), Dataframe/tab-select wiring) assumes it
+    "gradio>=5.0,<6.0",
+    # config
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "pre-commit>=3.7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "integration: end-to-end pipeline tests (mocked Whisper + LLM)",
+    "security: PII and prompt-injection coverage",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
