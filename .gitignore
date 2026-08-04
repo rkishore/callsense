@@ -49,3 +49,6 @@ coverage.xml
 # --- gradio ---
 .gradio/
 flagged/
+
+# --- IK course materials: local reference only, never publish ---
+_reference/
