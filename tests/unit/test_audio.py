@@ -62,13 +62,18 @@ def test_rejects_oversized_file(oversized_bytes):
     ("payload", "audio_format"),
     [
         # Each payload carries a valid magic-byte header but no decodable stream,
-        # so detection succeeds and only the parse fails.
+        # so the format is recognised and only the decode fails.
         pytest.param(make_flac_bytes(), "flac", id="flac-header-without-stream"),
         pytest.param(make_mp3_bytes(), "mp3", id="mp3-sync-without-frames"),
         pytest.param(make_m4a_bytes(), "m4a", id="m4a-ftyp-without-atoms"),
-        pytest.param(make_ogg_bytes(16), "ogg", id="format-we-do-not-support"),
     ],
 )
 def test_extract_audio_properties_raises_on_unreadable_input(payload, audio_format):
     with pytest.raises(AudioValidationError):
         extract_audio_properties(payload, audio_format)
+
+
+def test_extract_audio_properties_rejects_unknown_format():
+    """Dispatch is on the format argument, so the payload is never inspected."""
+    with pytest.raises(AudioValidationError, match="Unsupported audio format"):
+        extract_audio_properties(b"", "ogg")
