@@ -66,6 +66,7 @@ def test_rejects_oversized_file(oversized_bytes):
         pytest.param(make_flac_bytes(), "flac", id="flac-header-without-stream"),
         pytest.param(make_mp3_bytes(), "mp3", id="mp3-sync-without-frames"),
         pytest.param(make_m4a_bytes(), "m4a", id="m4a-ftyp-without-atoms"),
+        pytest.param(make_wav_bytes()[:20], "wav", id="wav-truncated"),
     ],
 )
 def test_extract_audio_properties_raises_on_unreadable_input(payload, audio_format):

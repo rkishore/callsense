@@ -131,6 +131,8 @@ def extract_audio_properties(audio_data: bytes, audio_format: str) -> dict:
                     }
             except wave.Error as e:
                 raise AudioValidationError(f"Corrupt or unreadable WAV file: {e}") from e
+            except EOFError as e:
+                raise AudioValidationError("Unexpected EOF in WAV file: truncated data") from e
 
         elif audio_format in ("mp3", "flac", "m4a"):
             # Only the parse is guarded: a MutagenError here means the bytes are bad.
