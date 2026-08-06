@@ -21,10 +21,16 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class AudioInput(BaseModel):
+class StrictModel(BaseModel):
+    """Base for all pipeline contracts. Unknown fields are an error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AudioInput(StrictModel):
     """Represents the audio input for a call."""
 
     audio_data: bytes = Field(description="Raw audio file bytes")
@@ -34,7 +40,7 @@ class AudioInput(BaseModel):
     timestamp: str | None = Field(default=None, description="Optional timestamp of the call")
 
 
-class AudioProperties(BaseModel):
+class AudioProperties(StrictModel):
     """Represents properties of the audio input."""
 
     duration_seconds: float = Field(description="Duration of the audio in seconds")
@@ -44,15 +50,15 @@ class AudioProperties(BaseModel):
     format: str = Field(description="Audio format (e.g., 'wav', 'mp3')")
 
 
-class PIIScanResult(BaseModel):
+class PIIScanResult(StrictModel):
     """Represents the result of a PII scan on the audio input."""
 
-    pii_found: bool = Field(description="Whether PII was found in the audio")
+    pii_detected: bool = Field(description="Whether PII was found in the audio")
     pii_types: list[str] = Field(description="List of PII types found")
     pii_count: int = Field(description="Count of PII instances found")
 
 
-class IntakeResult(BaseModel):
+class IntakeResult(StrictModel):
     """Represents the result of the intake process for a call."""
 
     call_id: uuid.UUID = Field(description="Unique identifier for the call")
@@ -69,7 +75,7 @@ class IntakeResult(BaseModel):
     )
 
 
-class TranscriptionSegment(BaseModel):
+class TranscriptionSegment(StrictModel):
     """Represents a segment of transcribed audio."""
 
     text: str = Field(description="Transcribed text of the segment")
@@ -81,7 +87,7 @@ class TranscriptionSegment(BaseModel):
     speaker: str | None = Field(default=None, description="Optional speaker label for the segment")
 
 
-class TranscriptionResult(BaseModel):
+class TranscriptionResult(StrictModel):
     """Represents the result of the transcription process."""
 
     call_id: uuid.UUID = Field(description="Unique identifier for the call")
@@ -105,7 +111,7 @@ class ResolutionStatus(StrEnum):
     ESCALATED = "escalated"
 
 
-class ActionItem(BaseModel):
+class ActionItem(StrictModel):
     """Represents an action item extracted from the call."""
 
     description: str = Field(description="Description of the action item")
@@ -113,14 +119,14 @@ class ActionItem(BaseModel):
     deadline: str | None = Field(default=None, description="Due date for the action item")
 
 
-class Entity(BaseModel):
+class Entity(StrictModel):
     """Represents an entity extracted from the call."""
 
     name: str = Field(description="Name of the entity")
     type: str = Field(description="Type of the entity (e.g., person, organization)")
 
 
-class SummaryResult(BaseModel):
+class SummaryResult(StrictModel):
     """Represents the summary of the call."""
 
     call_id: uuid.UUID = Field(description="Unique identifier for the call")
@@ -138,7 +144,7 @@ class SummaryResult(BaseModel):
     entities: list[Entity] = Field(description="List of entities extracted from the call")
 
 
-class QADimensionScore(BaseModel):
+class QADimensionScore(StrictModel):
     """Represents a score for a specific QA dimension."""
 
     score: int = Field(ge=1, le=5, description="Score for the QA dimension (1 to 5)")
@@ -154,7 +160,7 @@ class SeverityLevel(StrEnum):
     CRITICAL = "critical"
 
 
-class ComplianceFlag(BaseModel):
+class ComplianceFlag(StrictModel):
     """Represents a compliance violation flag."""
 
     violation_description: str = Field(description="Description of the compliance violation")
@@ -166,7 +172,7 @@ class ComplianceFlag(BaseModel):
     )
 
 
-class QAScoreResult(BaseModel):
+class QAScoreResult(StrictModel):
     """Represents the overall QA score result for a call."""
 
     call_id: uuid.UUID = Field(description="Unique identifier for the call")
@@ -193,7 +199,7 @@ class CallStatus(StrEnum):
     FLAGGED_FOR_REVIEW = "flagged_for_review"
 
 
-class CallReport(BaseModel):
+class CallReport(StrictModel):
     """Represents the final report for a call, including summary and QA scores."""
 
     call_id: uuid.UUID = Field(description="Unique identifier for the call")
