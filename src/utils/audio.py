@@ -65,10 +65,46 @@ def detect_audio_format(header: bytes) -> str | None:
         return None
 
 
+def _wav_rejection_reason(audio_data: bytes) -> str | None:
+    """Inspect a WAV's RIFF header and return why it should be rejected.
+
+    Covers over-length audio as well as corrupt or truncated headers, since all
+    three surface from the same wave.open() call.
+
+    Returns:
+        str | None: The rejection message, or None if the header is acceptable.
+    """
+    with io.BytesIO(audio_data) as audio_file:
+        try:
+            with wave.open(audio_file, "rb") as wav_file:
+                frame_count = wav_file.getnframes()
+                sample_rate = wav_file.getframerate()
+                duration_seconds = frame_count / float(sample_rate)
+                if duration_seconds > MAX_DURATION_SECONDS:
+                    return "Audio duration out of bounds"
+        except wave.Error as e:
+            return f"Corrupt or unreadable WAV file: {e}"
+        except EOFError:
+            return "Unexpected EOF in WAV file: truncated data"
+
+    return None
+
+
 def validate_audio_file(audio_data: bytes, file_path: str) -> ValidationResult:
     """
-    Validate the audio file. Reject files that are empty, larger than 50MB, or in an
-    unsupported format.
+    Validate the audio file. Reject files that are empty, over-long, larger than
+    50MB, or in an unsupported format.
+
+    The check order is load-bearing — two inputs violate more than one rule and
+    must report the more specific one:
+
+    - a 3601s WAV is both over-length and over 50MB, and must report duration
+    - 50MB of non-audio bytes is both unrecognisable and oversized, and must
+      report size
+
+    So format is *detected* early (the duration branch needs it) but *rejected*
+    late, after the size gate. Moving that last check up next to the detection
+    call is the obvious-looking edit that breaks the second case.
 
     Return a ValidationResult dataclass with is_valid and error fields.
 
@@ -85,6 +121,14 @@ def validate_audio_file(audio_data: bytes, file_path: str) -> ValidationResult:
             error=f"File is too small to determine format: {file_path}",
         )
 
+    header = audio_data[:12]
+    audio_format = detect_audio_format(header)
+
+    if audio_format == "wav":
+        reason = _wav_rejection_reason(audio_data)
+        if reason:
+            return ValidationResult(is_valid=False, error=reason)
+
     if len(audio_data) > MAX_FILE_SIZE_BYTES:
         return ValidationResult(
             is_valid=False,
@@ -94,8 +138,7 @@ def validate_audio_file(audio_data: bytes, file_path: str) -> ValidationResult:
             ),
         )
 
-    header = audio_data[:12]
-    audio_format = detect_audio_format(header)
+    # Deliberately after the size gate — see the ordering note in the docstring.
     if not audio_format:
         return ValidationResult(is_valid=False, error=f"Unsupported audio format: {file_path}")
 

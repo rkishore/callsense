@@ -6,6 +6,7 @@ import pytest
 
 from src.utils.audio import (
     AudioValidationError,
+    _wav_rejection_reason,
     detect_audio_format,
     extract_audio_properties,
     validate_audio_file,
@@ -16,6 +17,7 @@ from tests.conftest import (
     make_m4a_bytes,
     make_mp3_bytes,
     make_ogg_bytes,
+    make_silent_wav_bytes,
     make_wav_bytes,
 )
 
@@ -78,3 +80,44 @@ def test_extract_audio_properties_rejects_unknown_format():
     """Dispatch is on the format argument, so the payload is never inspected."""
     with pytest.raises(AudioValidationError, match="Unsupported audio format"):
         extract_audio_properties(b"", "ogg")
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_substring"),
+    [
+        pytest.param(make_silent_wav_bytes(3601.0, 8000), "duration", id="over-60-minutes"),
+        pytest.param(make_wav_bytes()[:20], "truncated", id="truncated-header"),
+        pytest.param(make_wav_bytes(2.0), None, id="acceptable-wav"),
+    ],
+)
+def test_wav_rejection_reason(payload, expected_substring):
+    """Exercised directly, not only through validate_audio_file.
+
+    All three outcomes come from the same wave.open() call: an over-length file
+    reads fine and fails the duration comparison, a truncated one raises
+    EOFError, and a malformed one raises wave.Error.
+    """
+    reason = _wav_rejection_reason(payload)
+
+    if expected_substring is None:
+        assert reason is None
+    else:
+        assert reason is not None
+        assert expected_substring in reason
+
+
+def test_validate_prefers_duration_over_size():
+    """A 3601s WAV breaks both limits; the more specific message must win."""
+    payload = make_silent_wav_bytes(3601.0, 8000)
+    assert len(payload) > 52_428_800  # genuinely oversized too
+
+    error = validate_audio_file(payload, "long.wav").error
+    assert "duration" in error
+    assert "exceeds maximum" not in error
+
+
+def test_validate_prefers_size_over_format(oversized_bytes):
+    """50MB of non-audio breaks both limits; size is the more specific message."""
+    error = validate_audio_file(oversized_bytes, "big.wav").error
+    assert "exceeds maximum" in error
+    assert "Unsupported" not in error

@@ -7,11 +7,9 @@ the size gate, so an over-long recording reports its real problem rather than a
 misleading "file too large".
 """
 
-import io
 import re
 import tempfile
 import uuid
-import wave
 
 from src.graph.state import AudioInput, AudioProperties, IntakeResult, PIIScanResult
 from src.utils.audio import (
@@ -88,34 +86,17 @@ def run_intake(audio_input: AudioInput) -> IntakeResult:
         IntakeResult: Validation status, PII scan results, audio properties, and
             the temp file path — which is set only when validation passed.
     """
-    call_id = uuid.uuid4()
 
-    # Duration is checked before validate_audio_file so an over-long WAV reports
-    # "duration" rather than "too large" — a 3601s file exceeds both limits.
-    audio_format = detect_audio_format(audio_input.audio_data[:12])
-    if audio_format == "wav":
-        with io.BytesIO(audio_input.audio_data) as audio_file:
-            try:
-                with wave.open(audio_file, "rb") as wav_file:
-                    frame_count = wav_file.getnframes()
-                    sample_rate = wav_file.getframerate()
-                    duration_seconds = frame_count / float(sample_rate)
-                    if duration_seconds > 3600.0:
-                        return _make_failed_result(call_id, "Audio duration out of bounds")
-            except wave.Error as e:
-                return _make_failed_result(call_id, f"Corrupt or unreadable WAV file: {e}")
-            except EOFError:
-                return _make_failed_result(call_id, "Unexpected EOF in WAV file: truncated data")
+    # Assign a unique call ID for a new intake
+    call_id = uuid.uuid4()
 
     # Validate the audio file
     validation_result = validate_audio_file(audio_input.audio_data, audio_input.filename)
     if not validation_result.is_valid:
         return _make_failed_result(call_id, validation_result.error)
 
-    if not audio_format:
-        return _make_failed_result(call_id, f"Unsupported audio format: {audio_input.filename}")
-
     # extract_audio_properties returns a plain dict whose keys match AudioProperties
+    audio_format = detect_audio_format(audio_input.audio_data[:12])
     audio_properties = AudioProperties(
         **extract_audio_properties(audio_input.audio_data, audio_format)
     )
