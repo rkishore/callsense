@@ -52,3 +52,6 @@ flagged/
 
 # --- IK course materials: local reference only, never publish ---
 _reference/
+
+# --- reference audio samples: local only, not ours to republish ---
+data/samples/*.mp3
