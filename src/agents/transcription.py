@@ -1,6 +1,13 @@
 """
-Transcription node in langgraph with heuristics-based speaker diarization,
-SHA-256 caching, prompt injection detector and PII redactor.
+Stage 2 — transcription. Local faster-whisper inference plus artifact cleaning
+and per-segment confidence.
+
+The model is a process-wide singleton because loading costs 5-30s and the spec
+names per-request loading as a top mistake.
+
+Not here yet: speaker diarization, and the SHA-256 cache (which needs the
+database layer from M5). Prompt-injection detection and PII redaction are
+separate stages and live in src/security/.
 """
 
 import re
@@ -73,7 +80,6 @@ def _get_whisper_model(model_size: str) -> WhisperModel:
     """
     global _model, _model_size
 
-    # Check the cache
     if _model is None or _model_size != model_size:
         device, compute_type = _detect_device()
         logger.info(
@@ -137,10 +143,8 @@ def run_transcription(
     if config is None:
         config = load_config()
 
-    # Get the model
     model = _get_whisper_model(config.whisper_model_size)
 
-    # transcribe with the six parameters
     segments, info = model.transcribe(
         str(intake_result.temp_path),
         beam_size=1,
@@ -162,7 +166,6 @@ def run_transcription(
     # skipped here, or they would inject double spaces.
     full_text = " ".join(text for text in cleaned_texts if text)
 
-    # Compute confidence per segment
     confs = [
         max(0.0, min(1.0, 1 + s.avg_logprob)) * 0.7 + (1 - s.no_speech_prob) * 0.3 for s in segments
     ]
@@ -178,12 +181,10 @@ def run_transcription(
         for idx, s in enumerate(segments)
     ]
 
-    # Count number of segments below confidence_threshold
     num_segments_below_threshold = sum(1 for c in confs if c < config.confidence_threshold)
     low_confidence_ratio = num_segments_below_threshold / len(confs) if confs else 0.0
     flagged_low_confidence = low_confidence_ratio > config.low_confidence_halt_ratio
 
-    # Build TranscriptionResult — full_text, segments, low_confidence_ratio, flagged_low_confidence
     result = TranscriptionResult(
         call_id=intake_result.call_id,
         full_text=full_text,
