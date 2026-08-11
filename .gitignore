@@ -55,3 +55,6 @@ _reference/
 
 # --- reference audio samples: local only, not ours to republish ---
 data/samples/*.mp3
+
+# --- spike caches: regenerable output, not source ---
+_spikes/*.json

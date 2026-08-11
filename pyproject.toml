@@ -68,3 +68,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+# Spikes are throwaway print-debugging scripts kept only as evidence for the
+# decisions they drove. Wide print lines are the point; undefined names and
+# unused imports are still worth catching.
+"_spikes/*" = ["E501", "B007"]
