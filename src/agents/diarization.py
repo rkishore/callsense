@@ -15,9 +15,40 @@ Kept separate from transcription.py so the heuristic can be swapped for a real
 diarization model (pyannote) without touching the Whisper wrapper.
 """
 
+import re
 from typing import NamedTuple
 
 from src.graph.state import SpeakerRole
+
+# Chosen by measuring the ten reference calls, not by imagination — several
+# obvious-sounding candidates ("I'm calling about", "I was charged", "can you
+# verify") score zero hits across 787 segments. Two rules came out of that:
+#
+#   - Patterns must match what Whisper *outputs*, not what the agent said.
+#     "assist you" scores 14 hits across 6 files; "how can I help" scores 1,
+#     because Whisper mangles the help variants ("How can you help you today?").
+#   - A phrase both speakers use is worthless however common it is. "my name
+#     is" appears 13 times across 8 files and is excluded: agents introduce
+#     themselves with it, and so do customers.
+#
+# \b boundaries rather than substring matching, so a short pattern cannot match
+# inside a longer word. Compiled once at import; assign() runs per segment.
+_AGENT_PATTERNS = (
+    re.compile(r"\bthank you for calling\b", re.IGNORECASE),
+    re.compile(r"\bassist you\b", re.IGNORECASE),
+    re.compile(r"\bis there anything else\b", re.IGNORECASE),
+    re.compile(r"\bi apologize\b", re.IGNORECASE),
+    re.compile(r"\bmay i have\b", re.IGNORECASE),
+    re.compile(r"\blet me check\b", re.IGNORECASE),
+    re.compile(r"\bone moment\b", re.IGNORECASE),
+)
+
+_CUSTOMER_PATTERNS = (
+    re.compile(r"\bi need\b", re.IGNORECASE),
+    re.compile(r"\bi want\b", re.IGNORECASE),
+    re.compile(r"\bmy account\b", re.IGNORECASE),
+    re.compile(r"\bthank you so much\b", re.IGNORECASE),
+)
 
 
 class Utterance(NamedTuple):
@@ -31,6 +62,16 @@ class Utterance(NamedTuple):
     text: str
     start: float
     end: float
+
+
+def _matches(text: str, patterns: tuple[re.Pattern, ...]) -> bool:
+    """Whether any pattern occurs anywhere in the text.
+
+    search() rather than match(): match() anchors at position 0, so it would
+    miss "that's exactly what I need" while still finding "Thank you for
+    calling" — half the patterns appearing to work and half appearing broken.
+    """
+    return any(p.search(text) for p in patterns)
 
 
 class SpeakerDiarizer:
@@ -47,7 +88,24 @@ class SpeakerDiarizer:
             One SpeakerRole per input segment, same length and order. The
             caller zips these onto its own TranscriptionSegments.
 
-        Not yet implemented: content patterns and gap switching, so every
-        segment currently comes back as Agent.
+        A segment with no pattern match inherits the current speaker, which is
+        the common case — content patterns match only ~11% of segments, so most
+        of a transcript is labelled by propagation rather than by matching.
+        The first segment defaults to Agent.
+
+        Agent patterns are checked first, so a segment matching both resolves to
+        Agent. Measured at 0 such segments in 787, so the rule almost never
+        fires — but it is a decision, not an accident of branch order.
+
+        Not yet implemented: gap-based switching, which slots in as a further
+        branch before the fallthrough.
         """
-        return [SpeakerRole.AGENT for _ in segments]
+        current = SpeakerRole.AGENT
+        results = []
+        for s in segments:
+            if _matches(s.text, _AGENT_PATTERNS):
+                current = SpeakerRole.AGENT
+            elif _matches(s.text, _CUSTOMER_PATTERNS):
+                current = SpeakerRole.CUSTOMER
+            results.append(current)
+        return results

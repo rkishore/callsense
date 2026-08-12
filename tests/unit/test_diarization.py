@@ -2,8 +2,15 @@
 Unit tests for diarization functions in src/agents/diarization.py.
 """
 
+import pytest
+
 from src.agents.diarization import SpeakerDiarizer, Utterance
 from src.graph.state import SpeakerRole
+
+# These module-level constants exist to move the diarizer off its default
+# Both are a SEED in one test and a case in another.
+CUSTOMER_SEED = "And I want you to cancel my account completely."
+AGENT_SEED = "How may I assist you today?"
 
 
 def _seg(text="hello", start=0.0, end=1.0):
@@ -67,3 +74,96 @@ def test_single_segment_is_agent():
     diarizer = SpeakerDiarizer()
     result = diarizer.assign(segments)
     assert result == [SpeakerRole.AGENT]
+
+
+# ── Group 2: content anchors ─────────────────────────────────────────────────
+# The lines below are real Whisper output from the ten reference calls, not
+# idealised text. Deliberately not parametrized over _AGENT_PATTERNS itself:
+# looping over the module's own list only asserts that each pattern matches
+# itself, which cannot fail and cannot catch a missing pattern.
+
+
+@pytest.mark.parametrize(
+    ("agent_line",),
+    [
+        pytest.param(
+            "Thank you for calling Nissan. My name is Warren. Can I have your name?",
+            id="thank-you-for-calling",
+        ),
+        pytest.param(
+            "Thank you for calling vital care health solutions. My name is Terry. "
+            "How may I assist you today?",
+            id="assist-you",
+        ),
+    ],
+)
+def test_agent_patterns_label_agent(agent_line):
+    """An agent phrase anchors the label, rather than it landing there by default.
+
+    The customer seed is what gives this test teeth. Asserting [AGENT] on a lone
+    agent line would also pass with every pattern deleted, since Agent is the
+    fallback — you cannot observe a value being set when it is also what you get
+    for free. Seeding the opposite role first makes the match observable.
+    """
+    segments = [_seg(CUSTOMER_SEED), _seg(agent_line)]
+    diarizer = SpeakerDiarizer()
+    labels = diarizer.assign(segments)
+    assert labels == [SpeakerRole.CUSTOMER, SpeakerRole.AGENT]
+
+
+@pytest.mark.parametrize(
+    ("customer_line",),
+    [
+        pytest.param(CUSTOMER_SEED, id="cancel-my-account"),
+        pytest.param(
+            "I've started my account in Postpaid and decided to switch over pre-pay.",
+            id="switch-over",
+        ),
+        pytest.param(
+            "Oh, thank you. That's exactly what I need. Thank you so much, Candace.",
+            id="what-i-need",
+        ),
+    ],
+)
+def test_customer_patterns_label_customer(customer_line):
+    """The first test in the suite an all-Agent implementation cannot pass.
+
+    Also pins that content beats the default: the customer line sits at index 1
+    behind an agent seed, but a lone customer line at index 0 would be Customer
+    too — a match overrides the first-segment default rather than deferring to
+    it. That is why _seg()'s default text must stay pattern-free, or this test
+    and test_single_segment_is_agent would contradict each other.
+    """
+    segments = [_seg(AGENT_SEED), _seg(customer_line)]
+    diarizer = SpeakerDiarizer()
+    labels = diarizer.assign(segments)
+    assert labels == [SpeakerRole.AGENT, SpeakerRole.CUSTOMER]
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        pytest.param(
+            "THANK YOU FOR CALLING NISSAN. CAN I HAVE YOUR NAME?",
+            [SpeakerRole.CUSTOMER, SpeakerRole.AGENT],
+            id="agent-line-upper",
+        ),
+        pytest.param(
+            "AND I WANT YOU TO CANCEL MY ACCOUNT COMPLETELY.",
+            [SpeakerRole.AGENT, SpeakerRole.CUSTOMER],
+            id="customer-line-upper",
+        ),
+    ],
+)
+def test_pattern_matching_is_case_insensitive(line, expected):
+    """Pins re.IGNORECASE so it cannot be dropped during a tidy-up.
+
+    Whisper normally emits sentence case, so nothing else in this suite would
+    notice its removal — every other test would keep passing.
+
+    The seed is the opposite role to the line under test, so a match is what
+    sets the second label rather than it inheriting the seed.
+    """
+    seed = CUSTOMER_SEED if expected[1] is SpeakerRole.AGENT else AGENT_SEED
+    diarizer = SpeakerDiarizer()
+    assert diarizer.assign([_seg(seed), _seg(line)]) == expected
