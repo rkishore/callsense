@@ -75,6 +75,13 @@ class IntakeResult(StrictModel):
     )
 
 
+class SpeakerRole(StrEnum):
+    """Enumeration of possible speaker roles."""
+
+    AGENT = "agent"
+    CUSTOMER = "customer"
+
+
 class TranscriptionSegment(StrictModel):
     """Represents a segment of transcribed audio."""
 
