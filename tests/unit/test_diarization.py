@@ -11,6 +11,7 @@ from src.graph.state import SpeakerRole
 # Both are a SEED in one test and a case in another.
 CUSTOMER_SEED = "And I want you to cancel my account completely."
 AGENT_SEED = "How may I assist you today?"
+AGENT_GREETING = "Thank you for calling Nissan. My name is Warren. Can I have your name?"
 
 
 def _seg(text="hello", start=0.0, end=1.0):
@@ -86,10 +87,7 @@ def test_single_segment_is_agent():
 @pytest.mark.parametrize(
     ("agent_line",),
     [
-        pytest.param(
-            "Thank you for calling Nissan. My name is Warren. Can I have your name?",
-            id="thank-you-for-calling",
-        ),
+        pytest.param(AGENT_GREETING, id="thank-you-for-calling"),
         pytest.param(
             "Thank you for calling vital care health solutions. My name is Terry. "
             "How may I assist you today?",
@@ -228,3 +226,88 @@ def test_consecutive_gaps_alternate_speakers():
     diarizer = SpeakerDiarizer()
     expected = [SpeakerRole.AGENT, SpeakerRole.CUSTOMER, SpeakerRole.AGENT]
     assert diarizer.assign(_with_gaps(2.0, 3.0)) == expected
+
+
+# ── Group 4: regressions from the spike ──────────────────────────────────────
+# Both tests below look redundant at a glance — one asserts Customer stays
+# Customer, the other that Agent stays Agent. Each is guarding a specific
+# mistake the measurements caught, and neither is obvious without that context.
+
+
+def test_my_name_is_does_not_force_agent():
+    """ "my name is" must never become an agent pattern.
+
+    It is the most tempting phrase in the corpus — 13 hits across 8 files, and
+    it appears in the opening line of half the calls. It is also used by both
+    speakers: "Thank you for calling Nissan. My name is Warren" and "Yeah, my
+    name is John Smith". High frequency, zero discrimination.
+
+    The customer seed is load-bearing. A lone "my name is" line matches no
+    customer pattern and so falls through to the Agent default — asserting
+    Agent-ness on it would pass whether or not the pattern existed. Seeding
+    Customer first means the label can only move if something forces it.
+    """
+    diarizer = SpeakerDiarizer()
+    result = diarizer.assign([_seg(CUSTOMER_SEED), _seg(text="Yeah, my name is John Smith.")])
+    assert result == [SpeakerRole.CUSTOMER, SpeakerRole.CUSTOMER]
+
+
+def test_content_pattern_beats_gap():
+    """The only test pinning the priority order as a decision.
+
+    Every other test in this file passes against a gap-first implementation,
+    because no other case puts the two signals in conflict. Here they disagree:
+    the current speaker is Agent, the gap of 2.0s says "flip to Customer", and
+    the agent greeting says "stay Agent". Content has to win.
+
+    The conflict is what makes it work. Seeding Customer and then supplying a
+    gap plus an agent line would have both signals agreeing on Agent, and the
+    test would pass whichever order the branches were written in.
+
+    Why content ranks first: it matches ~11% of segments but is reliable when
+    it does, whereas the gap fires on 3% of boundaries in a fast call and 38%
+    in a slow one. The gap carries a run of unmatched segments; it does not get
+    to overrule evidence.
+    """
+    segments = [_seg(start=0.0, end=0.0), _seg(AGENT_GREETING, start=2.0, end=3.0)]
+    diarizer = SpeakerDiarizer()
+    result = diarizer.assign(segments)
+    assert result == [SpeakerRole.AGENT, SpeakerRole.AGENT]
+
+
+def test_realistic_exchange():
+    """One scripted call, exercising every mechanism together.
+
+    The closest thing in this suite to documentation of the algorithm — each
+    segment is here for a different reason:
+
+      # text            gap  label     mechanism
+      0 agent greeting   -   Agent     content anchor at position 0
+      1 customer line    0.5 Customer  content flips it
+      2 pattern-free     0.5 Customer  propagation — the ~89% case
+      3 pattern-free     3.0 Agent     gap flip
+      4 agent closer     0.5 Agent     content re-anchors, agreeing with the run
+      5 customer thanks  0.5 Customer  content anchor at the close
+
+    Segment 4 is the only one where both signals point the same way, which is
+    what most of a real transcript looks like. Timings are halves and integers
+    so the gap subtractions stay exact; see _with_gaps for why that matters.
+    """
+    segments = [
+        _seg(AGENT_GREETING, start=0.0, end=2.0),
+        _seg(CUSTOMER_SEED, start=2.5, end=4.0),
+        _seg(start=4.5, end=5.0),
+        _seg(start=8.0, end=9.0),
+        _seg("Is there anything else I can help you with?", start=9.5, end=10.5),
+        _seg("Oh, thank you. That's exactly what I need…", start=11.0, end=12.0),
+    ]
+    diarizer = SpeakerDiarizer()
+    result = diarizer.assign(segments)
+    assert result == [
+        SpeakerRole.AGENT,
+        SpeakerRole.CUSTOMER,
+        SpeakerRole.CUSTOMER,
+        SpeakerRole.AGENT,
+        SpeakerRole.AGENT,
+        SpeakerRole.CUSTOMER,
+    ]
