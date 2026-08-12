@@ -91,7 +91,9 @@ class TranscriptionSegment(StrictModel):
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence score of the transcription (0.0 to 1.0)"
     )
-    speaker: str | None = Field(default=None, description="Optional speaker label for the segment")
+    speaker: SpeakerRole | None = Field(
+        default=None, description="Optional speaker label for the segment"
+    )
 
 
 class TranscriptionResult(StrictModel):

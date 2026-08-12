@@ -5,15 +5,16 @@ and per-segment confidence.
 The model is a process-wide singleton because loading costs 5-30s and the spec
 names per-request loading as a top mistake.
 
-Not here yet: speaker diarization, and the SHA-256 cache (which needs the
-database layer from M5). Prompt-injection detection and PII redaction are
-separate stages and live in src/security/.
+Not here yet: the SHA-256 cache (which needs the database layer from M5).
+
+Prompt-injection detection and PII redaction are separate stages and live in src/security/.
 """
 
 import re
 
 from faster_whisper import WhisperModel
 
+from src.agents.diarization import SpeakerDiarizer, Utterance
 from src.graph.state import IntakeResult, TranscriptionResult, TranscriptionSegment
 from src.utils.config import Config, get_logger, load_config
 
@@ -137,8 +138,7 @@ def run_transcription(
     Returns:
         TranscriptionResult with the same call_id as the intake.
 
-    Not yet implemented: the SHA-256 cache (needs the database layer, M5) and
-    speaker diarization, so every segment's speaker is None.
+    Not yet implemented: the SHA-256 cache (needs the database layer, M5).
     """
     if config is None:
         config = load_config()
@@ -170,13 +170,22 @@ def run_transcription(
         max(0.0, min(1.0, 1 + s.avg_logprob)) * 0.7 + (1 - s.no_speech_prob) * 0.3 for s in segments
     ]
 
+    diarizer = SpeakerDiarizer()
+
+    speakers = diarizer.assign(
+        [
+            Utterance(text=text, start=float(s.start), end=float(s.end))
+            for text, s in zip(cleaned_texts, segments, strict=True)
+        ]
+    )
+
     transcription_segments = [
         TranscriptionSegment(
             text=cleaned_texts[idx],
             start_time=float(s.start),
             end_time=float(s.end),
             confidence=confs[idx],
-            speaker=None,  # set by the diarizer, not yet built
+            speaker=speakers[idx],
         )
         for idx, s in enumerate(segments)
     ]

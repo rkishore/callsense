@@ -11,7 +11,7 @@ import pytest
 
 from src.agents import transcription
 from src.agents.intake import _EMPTY_AUDIO_PROPS, _EMPTY_PII
-from src.graph.state import IntakeResult
+from src.graph.state import IntakeResult, SpeakerRole
 from src.utils.config import Config
 
 
@@ -175,3 +175,46 @@ def test_low_confidence_ratio_and_flag(n_high, n_low, expected_ratio, expected_f
 
     assert result.low_confidence_ratio == pytest.approx(expected_ratio)
     assert result.flagged_low_confidence is expected_flagged
+
+
+def test_transcription_assigns_speakers_from_cleaned_text():
+    """The diarizer is called, and it is called with cleaned text.
+
+    The [BLANK_AUDIO] marker in segment 1 is load-bearing, not incidental
+    realism. "thank you so much" cannot match while the marker sits in the
+    middle of it, so the raw text scores no customer pattern; cleaning strips
+    the marker and collapses the double space, and then it matches:
+
+        raw text     -> [Agent, Agent, Agent]
+        cleaned text -> [Agent, Customer, Customer]
+
+    So the label sequence alone proves cleaning happens before diarization —
+    no need to inspect the diarizer's arguments. Delete the marker and this
+    test still passes, but it stops checking the thing it exists for.
+
+    Asserting the whole sequence rather than "speaker is not None" also catches
+    a reversed or off-by-one zip, which is the failure mode of this wiring.
+    Config is injected only to keep the test off whatever .env says.
+    """
+    config = Config(
+        llm_provider="openai",
+        openai_api_key="sk-test",
+        confidence_threshold=0.6,
+        low_confidence_halt_ratio=0.8,
+    )
+
+    fake_segments = [
+        _fake_segment("Thank you for calling Acme.", 0.0, 2.0),
+        _fake_segment("Thank you [BLANK_AUDIO] so much for your help.", 2.5, 4.0),
+        _fake_segment("Okay.", 4.5, 5.0),
+    ]
+
+    intake_result = _make_intake_result()
+
+    with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
+        mock_get_model.return_value.transcribe.return_value = (fake_segments, _fake_info())
+        result = transcription.run_transcription(intake_result, config)
+
+    speaker_roles = [s.speaker for s in result.segments]
+    assert speaker_roles == [SpeakerRole.AGENT, SpeakerRole.CUSTOMER, SpeakerRole.CUSTOMER]
+    assert len(result.segments) == 3
