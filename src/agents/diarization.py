@@ -50,6 +50,8 @@ _CUSTOMER_PATTERNS = (
     re.compile(r"\bthank you so much\b", re.IGNORECASE),
 )
 
+GAP_THRESHOLD_SECONDS = 1.2
+
 
 class Utterance(NamedTuple):
     """One transcript segment, as the diarizer sees it.
@@ -77,6 +79,15 @@ def _matches(text: str, patterns: tuple[re.Pattern, ...]) -> bool:
 class SpeakerDiarizer:
     """Assigns Agent/Customer labels to a call's utterances."""
 
+    def __init__(self, gap_threshold: float = GAP_THRESHOLD_SECONDS):
+        self.gap_threshold = gap_threshold
+
+    def _exceeds_threshold(self, prev_end: float, cur_start: float) -> bool:
+        return (prev_end is not None) and ((cur_start - prev_end) > self.gap_threshold)
+
+    def _flip(self, current):
+        return SpeakerRole.CUSTOMER if current is SpeakerRole.AGENT else SpeakerRole.AGENT
+
     def assign(self, segments: list[Utterance]) -> list[SpeakerRole]:
         """Label each utterance, in order.
 
@@ -97,15 +108,28 @@ class SpeakerDiarizer:
         Agent. Measured at 0 such segments in 787, so the rule almost never
         fires — but it is a decision, not an accident of branch order.
 
-        Not yet implemented: gap-based switching, which slots in as a further
-        branch before the fallthrough.
+        A silence strictly longer than the threshold toggles the speaker. It is
+        checked only after both pattern lists because it is the weaker signal:
+        it fires on 3% of boundaries in a fast call and 38% in a slow one, so it
+        can carry a run of unmatched segments but must never override an
+        explicit match. Strictly greater, not >=, and a gap of 0.00 therefore
+        never flips — Whisper's 30-second decode windows split mid-sentence at
+        0.00, so zero carries no information.
         """
         current = SpeakerRole.AGENT
         results = []
+        prev_end = None
         for s in segments:
+            cur_start = s.start
+            cur_end = s.end
             if _matches(s.text, _AGENT_PATTERNS):
                 current = SpeakerRole.AGENT
             elif _matches(s.text, _CUSTOMER_PATTERNS):
                 current = SpeakerRole.CUSTOMER
+            elif self._exceeds_threshold(prev_end, cur_start):
+                current = self._flip(current)
+
+            prev_end = cur_end
             results.append(current)
+
         return results

@@ -167,3 +167,64 @@ def test_pattern_matching_is_case_insensitive(line, expected):
     seed = CUSTOMER_SEED if expected[1] is SpeakerRole.AGENT else AGENT_SEED
     diarizer = SpeakerDiarizer()
     assert diarizer.assign([_seg(seed), _seg(line)]) == expected
+
+
+# ── Group 3: gap propagation ─────────────────────────────────────────────────
+# All text here stays pattern-free, or content anchoring fires and the gap is
+# never consulted. Gaps are built by the helpers below rather than by hand:
+# a gap is start[i] - end[i-1], and writing those numbers directly is easy to
+# get backwards, which yields a test that passes and verifies nothing.
+
+
+def _with_gaps(*gaps):
+    """Pattern-free segments separated by exactly the given gaps.
+
+    Segments are zero-duration and placed at the cumulative sum of the gaps, so
+    each gap is a subtraction of two nearby values rather than of a large offset.
+    That matters: the diarizer's boundary row uses a gap of exactly 1.2, and
+    5.0 + 1.2 - 5.0 is 1.2000000000000002 — fractionally *above* the threshold,
+    which flips the speaker and makes a correct implementation look broken.
+
+    Float arithmetic still cannot be exact for arbitrary values, so keep gaps
+    here exactly representable — integers, halves, quarters — or reason about
+    the subtraction before adding a row.
+    """
+    segments = [_seg(start=0.0, end=0.0)]
+    position = 0.0
+    for gap in gaps:
+        position += gap
+        segments.append(_seg(start=position, end=position))
+    return segments
+
+
+@pytest.mark.parametrize(
+    ("gap", "expected"),
+    [
+        pytest.param(2.0, SpeakerRole.CUSTOMER, id="above-threshold-flips"),
+        pytest.param(1.2, SpeakerRole.AGENT, id="exactly-at-threshold-does-not-flip"),
+        pytest.param(0.3, SpeakerRole.AGENT, id="small-gap-keeps-speaker"),
+        pytest.param(0.0, SpeakerRole.AGENT, id="zero-gap-does-not-flip"),
+    ],
+)
+def test_gap_returns_expected_role(gap, expected):
+    """A gap flips the speaker only when it is strictly above the threshold.
+
+    The 1.2 row is the > versus >= boundary — the likeliest single bug here.
+    The 0.0 row encodes a spike finding: Whisper's 30-second decode windows
+    split mid-sentence at 0.00, and a 0.00 gap also occurred on a genuine
+    speaker change, so zero must stay inert in both directions.
+    """
+    diarizer = SpeakerDiarizer()
+    assert diarizer.assign(_with_gaps(gap)) == [SpeakerRole.AGENT, expected]
+
+
+def test_consecutive_gaps_alternate_speakers():
+    """The gap toggles the speaker rather than setting it to Customer.
+
+    An implementation that assigns Customer on a gap passes every row above —
+    one flip looks identical either way. It breaks only on the second flip,
+    where a toggle returns to Agent and an assignment stays stuck.
+    """
+    diarizer = SpeakerDiarizer()
+    expected = [SpeakerRole.AGENT, SpeakerRole.CUSTOMER, SpeakerRole.AGENT]
+    assert diarizer.assign(_with_gaps(2.0, 3.0)) == expected
