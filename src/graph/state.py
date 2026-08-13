@@ -225,6 +225,13 @@ class CallReport(StrictModel):
     trace_id: str | None = Field(default=None, description="Optional trace ID for debugging")
 
 
+class InjectionScanResult(StrictModel):
+    """Represents the injection scan result for the full text from a transcript"""
+
+    injection_detected: bool = Field(description="Was an injection pattern detected?")
+    patterns_matched: list[str] = Field(description="Injection patterns detected")
+
+
 class PipelineState(TypedDict, total=False):
     """Top-level state that flows through the entire graph."""
 
@@ -251,3 +258,6 @@ class PipelineState(TypedDict, total=False):
 
     # Status
     status: CallStatus
+
+    # Injection pattern detection
+    injection_scan: InjectionScanResult
