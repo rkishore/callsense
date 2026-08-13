@@ -54,7 +54,9 @@ flagged/
 _reference/
 
 # --- reference audio samples: local only, not ours to republish ---
-data/samples/*.mp3
+# Also covers formats converted locally for testing (e.g. an .ogg to exercise
+# the unsupported-format path).
+data/samples/*
 
 # --- spike caches: regenerable output, not source ---
 _spikes/*.json

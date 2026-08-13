@@ -91,6 +91,31 @@ would surprise us during M6.
   second callback. M6's progressive UI works as planned; a single callback
   cannot do this, since it returns only once.
 
+- **`gr.Audio` has no format allow-list.** It accepted an `.ogg` upload without
+  complaint, so rejecting unsupported audio is entirely the validator's job —
+  M6's self-check ("uploading an `.ogg` shows a clear error") is reached through
+  `process_call` → intake, not by the component.
+
+- **Error policy, decided here:** `process_call` catches its own exceptions and
+  re-raises them as `gr.Error` with a readable message. `gr.Error` is Gradio's
+  user-facing failure type and renders without a stack trace, which is what the
+  self-check asks for; an escaped `RuntimeError` therefore means a bug rather
+  than the ordinary path for bad input. `.then()` — as opposed to `.success()` —
+  fires whether or not the previous step raised, so the status Markdown hides on
+  the error path too. Decide separately whether `launch(show_error=True)` stays
+  on for the demo recording; it is right for development.
+
+- **The Analyze button stays clickable during processing** unless disabled.
+  Gradio queues the second click rather than corrupting the first, so it costs a
+  wasted full run rather than a crash. Fixed by adding the button to the outputs
+  of the first and last steps in the chain (`interactive=False`, then `True`).
+  M6 asks for a do-not-refresh warning but says nothing about this.
+
+- **Gradio keeps its own temp copies.** Every upload is copied into a hashed
+  directory under Gradio's temp root, separate from the PDF and JSON files
+  `process_call` writes. M6's rolling 50-file cleanup covers ours, not Gradio's.
+  Worth a README line rather than code.
+
 - **Incidental:** the sample is ~115 kbps, so a 60-minute call would be ~52 MB
   — above `MAX_FILE_SIZE_BYTES` (50 MB). `MAX_DURATION_SECONDS = 3600` and the
   size cap are in tension for ordinary mp3. Worth a line in the README's

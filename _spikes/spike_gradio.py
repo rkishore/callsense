@@ -8,16 +8,20 @@ def show_status():
     return gr.update(
         visible=True,
         value="⏳ Processing… roughly 30s for a 5-minute call. Please do not refresh.",
-    )
+    ), gr.update(interactive=False)
 
 
-def do_work(audio_path):
+def do_work(audio_path, mode):
     time.sleep(2)  # stands in for the seven-stage pipeline
+    if mode == "unhandled exception":
+        raise RuntimeError("boom — this is what an escaped bug looks like")
+    if mode == "gr.Error":
+        raise gr.Error("Unsupported audio format: sample.ogg")
     return f"done: {audio_path}"
 
 
 def hide_status():
-    return gr.update(visible=False)
+    return gr.update(visible=False), gr.update(interactive=True)
 
 
 def inspect(value):
@@ -43,10 +47,16 @@ with gr.Blocks() as demo:
 
     status = gr.Markdown(visible=False)
     result = gr.Textbox(label="result")
-    btn = gr.Button("Analyze Call", variant="primary")
-
-    btn.click(show_status, outputs=status).then(do_work, inputs=audio2, outputs=result).then(
-        hide_status, outputs=status
+    mode = gr.Radio(
+        ["succeed", "unhandled exception", "gr.Error"],
+        value="succeed",
+        label="failure mode",
     )
 
-demo.launch()
+    btn = gr.Button("Analyze Call", variant="primary")
+
+    btn.click(show_status, outputs=[status, btn]).then(
+        do_work, inputs=[audio2, mode], outputs=result
+    ).then(hide_status, outputs=[status, btn])
+
+demo.launch(show_error=True)
