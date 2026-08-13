@@ -232,6 +232,15 @@ class InjectionScanResult(StrictModel):
     patterns_matched: list[str] = Field(description="Injection patterns detected")
 
 
+class PIIRedactionResult(StrictModel):
+    """Represents the PII redaction result for the full text from a transcript"""
+
+    pii_detected: bool = Field(description="Was a PII pattern detected?")
+    pii_types: list[str] = Field(description="PII patterns detected")
+    pii_count: int = Field(description="Number of PII patterns detected")
+    redacted_text: str = Field(description="Redacted text with PII removed")
+
+
 class PipelineState(TypedDict, total=False):
     """Top-level state that flows through the entire graph."""
 
@@ -261,3 +270,6 @@ class PipelineState(TypedDict, total=False):
 
     # Injection pattern detection
     injection_scan: InjectionScanResult
+
+    # PII pattern detection
+    pii_redactor_scan: PIIRedactionResult
