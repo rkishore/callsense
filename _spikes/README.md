@@ -53,6 +53,49 @@ Ran all 10 reference samples — 771 segments, 55 minutes — through `tiny`.
   input.
 - Throughput: 55 minutes of audio in 45 s on CPU, ~74× realtime.
 
+## `spike_gradio.py`
+
+**Question:** what does `gr.Audio` actually hand a callback, and does the
+`.click().then().then()` chain render its intermediate state?
+
+Thirty minutes, run before building any real UI, to find out whether Gradio
+would surprise us during M6.
+
+**Findings**
+
+- **`type="filepath"` beats the spec's `type="numpy"`, decisively.** Uploading
+  `sample_01.mp3` through a filepath component returns the **original file,
+  untouched** — `b'ID3\x04\x00...'`, 1,769,445 bytes, original filename
+  preserved in the temp path. So `Path(p).read_bytes()` is exactly the `bytes`
+  that `AudioInput.audio_data` wants, and `detect_audio_format` sees `ID3` and
+  returns `mp3`. Magic-byte validation stays reachable from the UI.
+
+- The numpy form of the same file is `(48000, ndarray(5889324, 2), int16)` —
+  needing int16→float32, stereo→mono and 48k→16k conversion, **and then
+  re-encoding to bytes anyway**, because `AudioInput` takes bytes and the
+  validator wants magic bytes. Decoding a file only to rebuild a worse copy of
+  it. faster-whisper decodes the file itself regardless.
+
+- **This deletes a step from M6.** The milestone says `process_call()` must
+  "handle the Gradio numpy tuple by writing a temp WAV via soundfile". With
+  `filepath` there is no tuple, no soundfile call and no temp WAV.
+
+- **Microphone recordings arrive the same way** — `sources=["microphone"]` with
+  `type="filepath"` yields a temp `audio.wav` whose first bytes are
+  `RIFF....WAVE`, which the existing validator already handles. No special case.
+  (Note the filename is always `audio.wav`, so `AudioInput.filename` carries no
+  information for mic input.)
+
+- **`.click().then().then()` renders its intermediate state as documented** —
+  the status Markdown appears on click and stays up for the duration of the
+  second callback. M6's progressive UI works as planned; a single callback
+  cannot do this, since it returns only once.
+
+- **Incidental:** the sample is ~115 kbps, so a 60-minute call would be ~52 MB
+  — above `MAX_FILE_SIZE_BYTES` (50 MB). `MAX_DURATION_SECONDS = 3600` and the
+  size cap are in tension for ordinary mp3. Worth a line in the README's
+  limitations.
+
 ## `spike_diarize.py`
 
 **Question:** do timing gaps and content patterns carry enough signal for a
