@@ -34,6 +34,45 @@ tests/
   security/             PII format coverage, injection payload coverage
 ```
 
+## Known limitations
+
+Measured during development, not discovered by a reviewer.
+
+**PII detection is regex over digits, so spoken-word numbers escape it.** A caller who reads a card
+number slowly enough that Whisper transcribes it as words — *"four one one one, one one one one…"* —
+produces text no digit pattern matches. Every real spoken number in the ten reference calls came out
+as digits, so this is a tail case rather than the common one, but it is a genuine hole.
+
+**Only structured PII is redacted.** SSN, credit card, email and phone are covered. Names,
+addresses, employers and dates of birth are not — `sample_01` alone contains *"my name is John
+Smith"* and a city, state and ZIP, all of which currently reach the LLM. See the roadmap below.
+
+**The 50 MB file cap and the 60-minute duration cap are in tension.** The reference audio runs about
+115 kbps, so a spec-legal 60-minute call is roughly 52 MB and is rejected on size before duration is
+ever checked.
+
+**Speaker diarization is heuristic and assumes the first speaker is the agent.** Five of the ten
+reference calls open with a narrator rather than an agent — they are training recordings — so the
+opening segments mislabel until a content pattern anchors the run.
+
+## Roadmap
+
+**NER-based PII detection on the input gate.** The clear next step, because it closes the
+unstructured-PII gap above: names, addresses and employers are exactly what a named-entity model
+catches and a regex cannot. Presidio layered over the existing regex, rather than replacing it —
+regex stays authoritative for the structured types, where it is faster and has no false-negative
+mode. The cost is a spaCy model in the image and added per-call latency, which is why it is not in
+the current build.
+
+**Output-side guardrails were considered and deliberately skipped.** The LLM's output here is
+already constrained by construction: both calls use Pydantic structured output, so field types,
+score ranges and enums are validated at the boundary, and `overall_score` is recomputed in Python
+from the weighted dimensions with the model's own figure discarded. A framework like Guardrails AI
+would mostly re-check what the schema already guarantees. PII cannot leak through the output either,
+since redaction happens before the model sees the transcript — there is nothing left to leak. The
+residual risk is hallucinated content grounded in nothing, which is a prompting and evaluation
+problem rather than a validation one.
+
 ## Requirements
 
 Python 3.11+ and `ffmpeg` on the PATH.
