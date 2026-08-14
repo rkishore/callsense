@@ -72,6 +72,10 @@ def detect_and_redact_pii(text: str) -> PIIRedactionResult:
         for m in pattern.finditer(text):
             matches.append((m.start(), m.end(), pii_type))
 
+    # Sort ascending on start positions, with longest-match to break tie
+    # Longest match first ensures that if multiple PII types match, the longest one is
+    # surfaced first so that it gets redacted and the other one is subsumed -
+    # helps with clean deduping
     matches.sort(key=lambda m: (m[0], -(m[1] - m[0])))
 
     logger.debug(matches)
@@ -84,6 +88,7 @@ def detect_and_redact_pii(text: str) -> PIIRedactionResult:
             kept.append((start, end, pii_type))
             last_end = end
 
+    # reversed to ensure we go right-to-left
     redacted_text = text
     for start, end, pii_type in reversed(kept):
         redacted_text = redacted_text[:start] + f"[REDACTED_{pii_type}]" + redacted_text[end:]
