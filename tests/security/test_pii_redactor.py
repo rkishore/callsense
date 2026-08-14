@@ -2,6 +2,8 @@
 Unit tests for pii redactor functions in src/security/pii_redactor.py.
 """
 
+import pytest
+
 from src.graph.state import PIIRedactionResult
 from src.security.pii_redactor import detect_and_redact_pii
 
@@ -107,3 +109,91 @@ def test_second_match_is_not_left_partially_intact():
     # check is the one that fails for the interesting reason.
     assert "987-65-4321" not in result.redacted_text
     assert "321" not in result.redacted_text
+
+
+SSN_VARIANTS = [
+    pytest.param("123 45 6789", id="ssn_with_spaces"),
+    pytest.param("123.45.6789", id="ssn_with_dots"),
+    pytest.param("123456789", id="ssn_with_no_seps"),
+    pytest.param("123-45-6789", id="ssn_with_hyphens"),
+    pytest.param("123-45 6789", id="ssn_with_mixed_seps1"),
+    pytest.param("123-45.6789", id="ssn_with_mixed_seps2"),
+    pytest.param("123.45-6789", id="ssn_with_mixed_seps3"),
+]
+
+
+@pytest.mark.parametrize("ssn_variant", SSN_VARIANTS)
+def test_ssn_variants_are_handled_correctly(ssn_variant):
+    result = detect_and_redact_pii(f"Sure, my SSN is {ssn_variant}.")
+    assert isinstance(result, PIIRedactionResult)
+    assert result.pii_detected is True
+    assert result.pii_count == 1
+    assert result.pii_types == ["SSN"]
+    assert "[REDACTED_SSN]" in result.redacted_text
+    assert ssn_variant not in result.redacted_text
+
+
+CREDIT_CARD_VARIANTS = [
+    pytest.param("4111 1111 1111 1111", id="card_with_spaces"),
+    pytest.param("4111-1111-1111-1111", id="card_with_hyphens"),
+    pytest.param("4111111111111111", id="card_with_no_seps"),
+    pytest.param("4111 1111-1111 1111", id="card_with_mixed_seps"),
+    pytest.param("5500 0000 0000 0004", id="card_mastercard_16_digit"),
+    # 15 digits rather than 16 — the {12,18} bound has to span both lengths.
+    pytest.param("378282246310005", id="card_amex_15_digit"),
+]
+
+
+@pytest.mark.parametrize("card_variant", CREDIT_CARD_VARIANTS)
+def test_credit_card_variants_are_handled_correctly(card_variant):
+    result = detect_and_redact_pii(f"The card number is {card_variant}, thanks.")
+    assert result.pii_detected is True
+    assert result.pii_count == 1
+    assert result.pii_types == ["CREDIT_CARD"]
+    assert "[REDACTED_CREDIT_CARD]" in result.redacted_text
+    assert card_variant not in result.redacted_text
+
+
+PHONE_VARIANTS = [
+    # Two of the three real spoken numbers in the reference corpus are
+    # space-separated and one is hyphenated, so both forms are load-bearing
+    # rather than hypothetical.
+    pytest.param("555-123-4567", id="phone_with_hyphens"),
+    pytest.param("555 123 4567", id="phone_with_spaces"),
+    pytest.param("555.123.4567", id="phone_with_dots"),
+    pytest.param("5551234567", id="phone_with_no_seps"),
+    pytest.param("(555) 123-4567", id="phone_with_parens"),
+    pytest.param("+1 555 123 4567", id="phone_with_country_code"),
+]
+
+
+@pytest.mark.parametrize("phone_variant", PHONE_VARIANTS)
+def test_phone_variants_are_handled_correctly(phone_variant):
+    result = detect_and_redact_pii(f"You can reach me on {phone_variant} any time.")
+    assert result.pii_detected is True
+    assert result.pii_count == 1
+    assert result.pii_types == ["PHONE"]
+    assert "[REDACTED_PHONE]" in result.redacted_text
+    assert phone_variant not in result.redacted_text
+
+
+EMAIL_VARIANTS = [
+    pytest.param("bob@example.com", id="email_plain"),
+    pytest.param("john.smith@example.com", id="email_dotted_local_part"),
+    pytest.param("bob+tag@example.com", id="email_plus_tag"),
+    pytest.param("bob@mail.example.com", id="email_subdomain"),
+    pytest.param("bob@my-company.co.uk", id="email_hyphenated_domain"),
+    # No re.IGNORECASE on the email pattern, so the character classes have to
+    # carry both cases themselves.
+    pytest.param("BOB@EXAMPLE.COM", id="email_uppercase"),
+]
+
+
+@pytest.mark.parametrize("email_variant", EMAIL_VARIANTS)
+def test_email_variants_are_handled_correctly(email_variant):
+    result = detect_and_redact_pii(f"My email is {email_variant} if you need it.")
+    assert result.pii_detected is True
+    assert result.pii_count == 1
+    assert result.pii_types == ["EMAIL"]
+    assert "[REDACTED_EMAIL]" in result.redacted_text
+    assert email_variant not in result.redacted_text
