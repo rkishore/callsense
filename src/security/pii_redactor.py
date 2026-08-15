@@ -23,12 +23,22 @@ logger = get_logger(__name__)
 # SSN entry. Validated against the reference corpus, where three of the ten
 # calls contain a spoken phone number — one hyphenated, two space-separated.
 #
-# CREDIT_CARD ends on \d rather than \b: "(?:\d[ -]?){13,19}" lets the final
-# repetition swallow a trailing space, so the redaction would eat the gap and
+# CREDIT_CARD ends on \d rather than \b: without the trailing \d the final
+# repetition swallows a trailing space, and the redaction eats the gap to
 # produce "[REDACTED_CREDIT_CARD]and".
+#
+# The upper bound is 40 rather than a card's real 19 because this is a redactor,
+# not a validator. ASR miscounts long digit runs — a dictated 16-digit card came
+# back from Whisper as 25 digits — and at a tight bound CREDIT_CARD then fails
+# to match while PHONE matches a 10-digit run *inside* it, redacting the tail
+# and leaving fourteen digits in the clear under the wrong label. Swallowing the
+# whole run costs a slightly noisier transcript; the alternative leaks.
+#
+# The floor of 13 is what keeps the types apart, not the ceiling: SSN is 9
+# digits and phone is 10, so neither can be absorbed however high the top goes.
 PII_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b\d{3}[-.\s]?\d{2}[-.\s]?\d{4}\b"), "SSN"),
-    (re.compile(r"\b(?:\d[ -]?){12,18}\d\b"), "CREDIT_CARD"),
+    (re.compile(r"\b(?:\d[ -]?){12,40}\d\b"), "CREDIT_CARD"),
     (re.compile(r"\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b"), "EMAIL"),
     (re.compile(r"(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"), "PHONE"),
 ]

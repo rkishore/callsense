@@ -43,6 +43,17 @@ number slowly enough that Whisper transcribes it as words — *"four one one one
 produces text no digit pattern matches. Every real spoken number in the ten reference calls came out
 as digits, so this is a tail case rather than the common one, but it is a genuine hole.
 
+**Repeated digits defeat ASR counting.** A dictated `4111-1111-1111-1111` — thirteen identical
+digits with no acoustic variation to anchor the count — came back from Whisper as 25 digits, and as
+19 when read with pauses. Never 16. Card numbers with varied digits transcribe correctly. The
+redactor absorbs over-long runs whole rather than letting a shorter pattern match inside one, so
+this degrades the transcript rather than leaking, but the digits it redacts are not the digits that
+were spoken.
+
+**Model size affects redaction, not just accuracy.** On `tiny`, a dictated card number renders as
+`4.539-8712-3456-789-0`, and the leading `4.` survives redaction. `base` renders it cleanly. Use
+`WHISPER_MODEL_SIZE=base` or larger where PII redaction matters.
+
 **Only structured PII is redacted.** SSN, credit card, email and phone are covered. Names,
 addresses, employers and dates of birth are not — `sample_01` alone contains *"my name is John
 Smith"* and a city, state and ZIP, all of which currently reach the LLM. See the roadmap below.

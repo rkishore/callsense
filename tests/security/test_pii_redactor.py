@@ -197,3 +197,24 @@ def test_email_variants_are_handled_correctly(email_variant):
     assert result.pii_types == ["EMAIL"]
     assert "[REDACTED_EMAIL]" in result.redacted_text
     assert email_variant not in result.redacted_text
+
+
+def test_overlong_digit_run_is_swallowed_whole():
+    """ASR miscounts long digit runs, and a tight upper bound leaks when it does.
+
+    A dictated 16-digit card came back from Whisper as 25 digits. At the
+    original {12,18} bound CREDIT_CARD could not match a run that long, but
+    PHONE matched a 10-digit run inside it — redacting the tail and leaving
+
+        'The card number is 4111111111111[REDACTED_PHONE].'
+
+    fourteen digits in the clear, labelled as a phone number. Swallowing the
+    whole run costs a noisier transcript; the alternative is a leak, and this is
+    a redactor rather than a validator.
+    """
+    result = detect_and_redact_pii("The card number is 4111111111111111111111111. Expiry is 0926.")
+
+    assert result.pii_count == 1
+    assert result.pii_types == ["CREDIT_CARD"]
+    assert result.redacted_text == "The card number is [REDACTED_CREDIT_CARD]. Expiry is 0926."
+    assert "4111" not in result.redacted_text
