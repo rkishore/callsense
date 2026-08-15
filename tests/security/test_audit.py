@@ -4,7 +4,6 @@ Unit tests for auditlogger functions in src/security/audit.py.
 
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 from src.database.connection import session_scope
@@ -69,23 +68,48 @@ def test_call_id_is_stored_as_a_string(db_engine):
         assert entries[0].call_id == str(call_id)
 
 
-@pytest.mark.skip(reason="not written yet")
-def test_details_round_trip():
+def test_details_round_trip(db_engine):
     """A dict goes in and a dict comes back, never a JSON string.
 
-    The second conversion crossing this boundary. The JSON column owns it, so
-    this is really a model test — but details is the field a compliance reviewer
-    reads, and a caller that has to remember json.loads will eventually forget.
+    Not redundant with test_details_round_trips_as_a_dict in test_connection.py,
+    which proves the *column* serialises. This proves log() passes the dict
+    through **untouched**: add a json.dumps inside log() and the connection test
+    still passes, while this one fails on a JSON string of a JSON string.
+
+    The nested list is deliberate — a double encode is obvious in
+    '{"patterns": ["ignore_previous"]}' and easy to miss in '{"k": 1}'.
     """
-    assert True
+    details = {"patterns": ["ignore_previous", "prompt_leak"], "count": 2}
+    call_id = uuid.uuid4()
+    AuditLogger(db_engine).log(call_id, AuditAction.STARTED, details=details)
+
+    with session_scope(db_engine) as session:
+        entries = session.scalars(
+            select(AuditLogEntry).where(AuditLogEntry.call_id == str(call_id))
+        ).all()
+        assert len(entries) == 1
+        assert isinstance(entries[0].details, dict)
+        assert entries[0].details == details
 
 
-@pytest.mark.skip(reason="not written yet")
-def test_multiple_entries_share_one_call_id():
+def test_multiple_entries_share_one_call_id(db_engine):
     """Several entries per call — what the non-unique index exists for.
 
     Every real call writes started, then completed or failed, and possibly
     flagged. If call_id were unique the second write would raise, so this pins
     the schema decision that distinguishes audit_log from call_records.
     """
-    assert True
+    call_id = uuid.uuid4()
+    auditlogger = AuditLogger(db_engine)
+    auditlogger.log(call_id, AuditAction.STARTED)
+    auditlogger.log(call_id, AuditAction.COMPLETED)
+
+    with session_scope(db_engine) as session:
+        entries = session.scalars(
+            select(AuditLogEntry)
+            .where(AuditLogEntry.call_id == str(call_id))
+            .order_by(AuditLogEntry.id)
+        ).all()
+
+        assert len(entries) == 2
+        assert [e.action for e in entries] == [AuditAction.STARTED, AuditAction.COMPLETED]
