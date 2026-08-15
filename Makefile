@@ -1,4 +1,4 @@
-.PHONY: install test test-integration test-all lint format run clean
+.PHONY: install test test-integration test-all lint format run demo clean
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -26,6 +26,9 @@ format:  ## Autofix and format
 
 run:  ## Start the Gradio app on http://localhost:7860
 	$(PY) app.py
+
+demo:  ## Start the app configured for recording (see docs/DEMO.md)
+	WHISPER_MODEL_SIZE=base $(PY) app.py
 
 clean:  ## Remove caches and build artifacts
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info
