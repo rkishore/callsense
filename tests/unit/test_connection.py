@@ -4,37 +4,11 @@ src/database/connection.py.
 """
 
 import pytest
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import inspect, select
 
 from src.database import connection
 from src.database.models import AuditLogEntry
 from src.utils.config import Config
-
-
-@pytest.fixture(autouse=True)
-def reset_engine_singleton():
-    """Clear the module singleton around every test in this file.
-
-    Same shape and same reason as reset_whisper_singleton: an engine leaked
-    from one test would be reused by the next, and a test that points the
-    singleton at a tmp_path database must not leave it there.
-    """
-    connection._engine = None
-    yield
-    connection._engine = None
-
-
-@pytest.fixture
-def db_engine(tmp_path):
-    """A real SQLite database on disk, schema created, discarded after the test.
-
-    On disk rather than in-memory because in-memory SQLite gives each new
-    connection its own empty database — the schema would vanish between the
-    session that wrote it and the session that reads it.
-    """
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
-    connection.init_db(engine)
-    return engine
 
 
 def _entry(call_id="abc", action="started"):

@@ -241,6 +241,15 @@ class PIIRedactionResult(StrictModel):
     redacted_text: str = Field(description="Redacted text with PII removed")
 
 
+class AuditAction(StrEnum):
+    """Enumeration of possible actions."""
+
+    STARTED = "started"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    FLAGGED = "flagged"
+
+
 class PipelineState(TypedDict, total=False):
     """Top-level state that flows through the entire graph."""
 

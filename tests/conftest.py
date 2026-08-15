@@ -11,6 +11,9 @@ import struct
 import wave
 
 import pytest
+from sqlalchemy import create_engine
+
+from src.database import connection
 
 
 def make_wav_bytes(
@@ -118,3 +121,34 @@ def wav_bytes() -> bytes:
 def oversized_bytes() -> bytes:
     """One byte over the 50 MB limit."""
     return b"\x00" * (52_428_800 + 1)
+
+
+@pytest.fixture(autouse=True)
+def reset_engine_singleton():
+    """Clear the engine singleton around every test in the suite.
+
+    autouse and defined in conftest, so this runs for every test everywhere —
+    not only the database ones. That is deliberate: a test that points the
+    singleton at a tmp_path database must not leave it there, and the cost to
+    tests that never touch a database is two attribute assignments.
+
+    Same shape and same reason as reset_whisper_singleton in
+    test_transcription.py, which stays file-local because loading a Whisper
+    model is expensive enough to be worth confining.
+    """
+    connection._engine = None
+    yield
+    connection._engine = None
+
+
+@pytest.fixture
+def db_engine(tmp_path):
+    """A real SQLite database on disk, schema created, discarded after the test.
+
+    On disk rather than in-memory because in-memory SQLite gives each new
+    connection its own empty database — the schema would vanish between the
+    session that wrote it and the session that reads it.
+    """
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    connection.init_db(engine)
+    return engine
