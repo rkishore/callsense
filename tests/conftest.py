@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import math
 import struct
+import types
 import wave
 
 import pytest
@@ -152,3 +153,27 @@ def db_engine(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     connection.init_db(engine)
     return engine
+
+
+def fake_segment(text, start, end, avg_logprob=-0.27, no_speech_prob=0.32):
+    return types.SimpleNamespace(
+        text=text,
+        start=start,
+        end=end,
+        avg_logprob=avg_logprob,
+        no_speech_prob=no_speech_prob,
+    )
+
+
+def fake_info():
+    return types.SimpleNamespace(duration=120, duration_after_vad=120)
+
+
+def make_segments_info():
+    fake_segments = [
+        fake_segment("Hello world!", 0.0, 3.5),
+        fake_segment("I love you!", 3.6, 4.0),
+        fake_segment("Do you like me?", 4.1, 4.5),
+    ]
+
+    return (fake_segments, fake_info)

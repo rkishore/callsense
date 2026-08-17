@@ -13,6 +13,7 @@ from src.agents import transcription
 from src.agents.intake import _EMPTY_AUDIO_PROPS, _EMPTY_PII
 from src.graph.state import IntakeResult, SpeakerRole
 from src.utils.config import Config
+from tests.conftest import fake_info, fake_segment, make_segments_info
 
 
 @pytest.fixture(autouse=True)
@@ -83,40 +84,14 @@ def test_detect_device_returns_expected_tuple(torch_module, expected):
         assert transcription._detect_device() == expected
 
 
-def _fake_segment(text, start, end, avg_logprob=-0.27, no_speech_prob=0.32):
-    return types.SimpleNamespace(
-        text=text,
-        start=start,
-        end=end,
-        avg_logprob=avg_logprob,
-        no_speech_prob=no_speech_prob,
-    )
-
-
 def _high_conf_segment(text=" high", start=0.0, end=1.0):
     # avg_logprob=0.0 -> clamp(1 + 0.0) = 1.0 -> 1.0*0.7 + 1.0*0.3 = 1.00
-    return _fake_segment(text=text, start=start, end=end, avg_logprob=0.0, no_speech_prob=0.0)
+    return fake_segment(text=text, start=start, end=end, avg_logprob=0.0, no_speech_prob=0.0)
 
 
 def _low_conf_segment(text=" low", start=0.0, end=1.0):
     # avg_logprob=-1.0 -> clamp(1 + -1.0) = 0.0 -> 0.0*0.7 + 1.0*0.3 = 0.30
-    return _fake_segment(text=text, start=start, end=end, avg_logprob=-1.0, no_speech_prob=0.0)
-
-
-def _fake_info():
-    return types.SimpleNamespace(duration=120, duration_after_vad=120)
-
-
-def _make_segments_info():
-    fake_segments = [
-        _fake_segment("Hello world!", 0.0, 3.5),
-        _fake_segment("I love you!", 3.6, 4.0),
-        _fake_segment("Do you like me?", 4.1, 4.5),
-    ]
-
-    fake_info = _fake_info()
-
-    return (fake_segments, fake_info)
+    return fake_segment(text=text, start=start, end=end, avg_logprob=-1.0, no_speech_prob=0.0)
 
 
 def _make_intake_result():
@@ -132,7 +107,7 @@ def _make_intake_result():
 
 
 def test_transcription_threads_the_call_id():
-    (fake_segments, fake_info) = _make_segments_info()
+    (fake_segments, fake_info) = make_segments_info()
     intake_result = _make_intake_result()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
@@ -142,7 +117,7 @@ def test_transcription_threads_the_call_id():
 
 
 def test_transcription_uses_the_whisper_model():
-    (fake_segments, fake_info) = _make_segments_info()
+    (fake_segments, fake_info) = make_segments_info()
     intake_result = _make_intake_result()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
@@ -154,7 +129,7 @@ def test_transcription_uses_the_whisper_model():
 
 
 def test_transcription_preserves_segment_text():
-    (fake_segments, fake_info) = _make_segments_info()
+    (fake_segments, fake_info) = make_segments_info()
     intake_result = _make_intake_result()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
@@ -194,7 +169,7 @@ def test_low_confidence_ratio_and_flag(n_high, n_low, expected_ratio, expected_f
     intake_result = _make_intake_result()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
-        mock_get_model.return_value.transcribe.return_value = (fake_segments, _fake_info())
+        mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info())
         result = transcription.run_transcription(intake_result, config)
 
     assert result.low_confidence_ratio == pytest.approx(expected_ratio)
@@ -228,15 +203,15 @@ def test_transcription_assigns_speakers_from_cleaned_text():
     )
 
     fake_segments = [
-        _fake_segment("Thank you for calling Acme.", 0.0, 2.0),
-        _fake_segment("Thank you [BLANK_AUDIO] so much for your help.", 2.5, 4.0),
-        _fake_segment("Okay.", 4.5, 5.0),
+        fake_segment("Thank you for calling Acme.", 0.0, 2.0),
+        fake_segment("Thank you [BLANK_AUDIO] so much for your help.", 2.5, 4.0),
+        fake_segment("Okay.", 4.5, 5.0),
     ]
 
     intake_result = _make_intake_result()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
-        mock_get_model.return_value.transcribe.return_value = (fake_segments, _fake_info())
+        mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info())
         result = transcription.run_transcription(intake_result, config)
 
     speaker_roles = [s.speaker for s in result.segments]
