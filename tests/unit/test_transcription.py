@@ -218,3 +218,35 @@ def test_transcription_assigns_speakers_from_cleaned_text():
     speaker_roles = [s.speaker for s in result.segments]
     assert speaker_roles == [SpeakerRole.AGENT, SpeakerRole.CUSTOMER, SpeakerRole.CUSTOMER]
     assert len(result.segments) == 3
+
+
+def test_compute_audio_hash_is_content_addressed(tmp_path):
+    """Identical bytes hash the same however they are named.
+
+    This is the premise the cache rests on. A re-uploaded recording always
+    arrives as a fresh temp file with a different name, so a digest that took
+    the filename into account would never hit — the cache would look correct
+    and never fire.
+
+    The length assertion pins the String(64) column. A SHA-256 hex digest is 64
+    characters; SQLite ignores declared lengths, so an undersized column would
+    pass every local test and truncate on Postgres.
+    """
+    a = tmp_path / "a.mp3"
+    a.write_bytes(b"same content")
+
+    b = tmp_path / "b.mp3"
+    b.write_bytes(b"same content")
+
+    c = tmp_path / "c.mp3"
+    c.write_bytes(b"different content")
+
+    digest_a = transcription._compute_audio_hash(a)
+    digest_b = transcription._compute_audio_hash(b)
+    digest_c = transcription._compute_audio_hash(c)
+
+    assert digest_a == digest_b
+    assert digest_a != digest_c
+    assert len(digest_a) == len(digest_b) == len(digest_c) == 64
+    # Stable across calls — the chunked read must leave no state behind.
+    assert digest_a == transcription._compute_audio_hash(a)

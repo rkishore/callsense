@@ -10,7 +10,9 @@ Not here yet: the SHA-256 cache (which needs the database layer from M5).
 Prompt-injection detection and PII redaction are separate stages and live in src/security/.
 """
 
+import hashlib
 import re
+from pathlib import Path
 
 from faster_whisper import WhisperModel
 
@@ -117,6 +119,29 @@ def _clean_transcript_text(full_text: str) -> str:
     full_text = _EXTRA_SPACE.sub(" ", full_text)
 
     return full_text.strip()
+
+
+def _compute_audio_hash(audiofile_path: Path) -> str:
+    """SHA-256 of the file's bytes, as a 64-character hex digest.
+
+    The cache key. Content-addressed rather than keyed on call_id, so the same
+    recording uploaded by two different calls hits one row and transcribes once.
+
+    Read in 8 KB chunks rather than whole: MAX_FILE_SIZE_BYTES is 50 MB, so
+    f.read() would hold fifty megabytes of audio in memory to produce sixty-four
+    characters. Chunked hashing gives an identical digest with a fixed footprint,
+    and the walrus stops on the empty bytes read() returns at EOF.
+
+    Binary mode is not optional — text mode decodes to str, and update() needs
+    bytes.
+    """
+    h = hashlib.sha256()
+
+    with open(audiofile_path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+
+    return h.hexdigest()
 
 
 def run_transcription(

@@ -11,7 +11,7 @@ analysed twice should transcribe once.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, String
+from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -58,3 +58,37 @@ class AuditLogEntry(Base):
     # json.loads. The only reason to prefer Text is needing a canonical
     # byte-for-byte form (sort_keys) for hashing or signing, which we do not.
     details: Mapped[dict | None] = mapped_column(JSON, default=None)
+
+
+class TranscriptionCache(Base):
+    """One transcript per distinct piece of audio, keyed by content.
+
+    The key is the audio's SHA-256, not a call_id — so two different calls that
+    upload the same recording share one row and it transcribes once. That N:1
+    relationship is the point: at the spec's 5,000 calls a day, re-running
+    Whisper over a recording already transcribed is the difference between a
+    system that scales and one that does not.
+
+    audio_hash is unique here, which is the opposite of audit_log.call_id and
+    for the opposite reason: there is exactly one transcript per distinct audio,
+    where there are many audit entries per call.
+
+    transcription_json is Text rather than JSON because the blob is a Pydantic
+    model's own serialisation — the reader wants model_validate_json to parse
+    it, not SQLAlchemy handing back a dict that would have to be re-serialised
+    before Pydantic could validate it.
+
+    64 characters because a SHA-256 hex digest is 64 characters. SQLite ignores
+    declared lengths, so an undersized column here would pass every local test
+    and truncate silently on Postgres.
+    """
+
+    __tablename__ = "transcription_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    audio_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    transcription_json: Mapped[str] = mapped_column(Text())
+
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
