@@ -53,6 +53,52 @@ Ran all 10 reference samples — 771 segments, 55 minutes — through `tiny`.
   input.
 - Throughput: 55 minutes of audio in 45 s on CPU, ~74× realtime.
 
+## `spike_providers.py`
+
+**Question:** can each provider return a *nested* Pydantic model through
+`with_structured_output`? `QAScoreResult` holds five `QADimensionScore` objects
+plus a list of `ComplianceFlag`, and Groq's tool-calling binding was the
+suspected weak point.
+
+Makes real API calls, which is why it is a spike and not a test. Run before
+writing any of M4, so a failure would be a 30-minute decision rather than an
+evening.
+
+**Findings**
+
+- **Nesting was never the problem.** OpenAI, Gemini and Groq all returned a
+  fully valid `QAScoreResult` and all three correctly flagged the deliberate
+  identity-verification violation in the test transcript. The predicted failure
+  mode did not occur.
+
+- **`llama-3.3-70b-versatile` does not exist.** Groq 404s it, and the account
+  has no Llama model at all — the catalogue has cycled since the milestone was
+  written. This is a model-availability problem, not a schema one.
+
+- **Within Groq, model choice decides it.** Of what is offered:
+
+  | model | result |
+  |---|---|
+  | `openai/gpt-oss-120b` | ✅ valid nested output, 1.84 s |
+  | `qwen/qwen3.6-27b` | ❌ `BadRequestError` — "Failed to call a function" |
+  | `groq/compound-mini` | ❌ `BadRequestError` — "tool calling is not supported" |
+
+  So the risk *was* real, just misattributed: it is per-model tool-calling
+  support rather than per-provider. `DEFAULT_GROQ_MODEL` is now
+  `openai/gpt-oss-120b`.
+
+- **Latency, first real numbers.** Groq 1.84 s · OpenAI 5.32 s · Gemini 6.86 s.
+  Two LLM calls per pipeline means ~4 s on Groq against ~14 s on Gemini, which
+  matters for the demo's "roughly 30s for a 5-minute call" status message.
+
+- **Never trust the model's `call_id`.** It is a required `uuid.UUID` the LLM
+  has to invent, and both working providers did. OpenAI returned
+  `12345678-abcd-ef01-2345-6789abcdef01` — an obvious placeholder that is
+  nonetheless a valid UUID, so validation passes and the value is junk. Gemini
+  invented a plausible random one, which is worse because it looks real.
+  The milestone's instruction to set `result.call_id` after the call is the
+  only thing preventing a report keyed to a fabricated identifier.
+
 ## `spike_gradio.py`
 
 **Question:** what does `gr.Audio` actually hand a callback, and does the

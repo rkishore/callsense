@@ -44,9 +44,15 @@ class ConfigError(Exception):
 VALID_PROVIDERS = ("openai", "gemini", "groq")
 VALID_WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3")
 
+DEFAULT_LLM_PROVIDER = VALID_PROVIDERS[0]
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+# Measured 2026-08-17: llama-3.3-70b-versatile 404s — Groq has cycled its
+# catalogue since the milestone was written, and no Llama model is available.
+# Of what is offered, only gpt-oss-120b handles tool calling well enough for
+# with_structured_output: qwen3.6-27b returns "Failed to call a function" and
+# compound-mini rejects tool calling outright. See _spikes/README.md.
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_WHISPER_MODEL_SIZE = "tiny"
 DEFAULT_DB_PATH = "data/calls.db"
 DEFAULT_TIMEOUT_SECONDS = 60.0
