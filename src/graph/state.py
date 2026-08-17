@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -198,6 +198,22 @@ class QAScoreResult(StrictModel):
         ge=1.0, le=5.0, description="Weighted overall QA score (1.0 to 5.0)"
     )
     compliance_flags: list[ComplianceFlag] = Field(description="List of compliance violation flags")
+
+
+class QADimensionSpec(NamedTuple):
+    """Display label and scoring weight for one QA dimension."""
+
+    label: str
+    weight: float
+
+
+QA_DIMENSIONS = {
+    "professionalism": QADimensionSpec("Professionalism", 0.15),
+    "empathy": QADimensionSpec("Empathy", 0.20),
+    "problem_resolution": QADimensionSpec("Problem Resolution", 0.30),
+    "compliance": QADimensionSpec("Compliance", 0.20),
+    "communication_clarity": QADimensionSpec("Communication Clarity", 0.15),
+}
 
 
 class CallStatus(StrEnum):
