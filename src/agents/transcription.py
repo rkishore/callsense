@@ -5,8 +5,6 @@ and per-segment confidence.
 The model is a process-wide singleton because loading costs 5-30s and the spec
 names per-request loading as a top mistake.
 
-Not here yet: the SHA-256 cache (which needs the database layer from M5).
-
 Prompt-injection detection and PII redaction are separate stages and live in src/security/.
 """
 
@@ -15,8 +13,13 @@ import re
 from pathlib import Path
 
 from faster_whisper import WhisperModel
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
 
 from src.agents.diarization import SpeakerDiarizer, Utterance
+from src.database.connection import session_scope
+from src.database.models import TranscriptionCache
 from src.graph.state import IntakeResult, TranscriptionResult, TranscriptionSegment
 from src.utils.config import Config, get_logger, load_config
 
@@ -144,6 +147,70 @@ def _compute_audio_hash(audiofile_path: Path) -> str:
     return h.hexdigest()
 
 
+def _check_cache(audio_hash: str, engine: Engine | None = None) -> TranscriptionResult | None:
+    """Look up a previously stored transcript by audio hash.
+
+    Args:
+        audio_hash: Hex digest from _compute_audio_hash().
+        engine: Defaults to the process-wide engine; tests pass a tmp_path one.
+
+    Returns:
+        The stored TranscriptionResult, or None if this audio has not been
+        transcribed before. None means "not cached" — the ordinary case, not a
+        failure — which is why this returns rather than raises.
+
+    The stored call_id belongs to whichever call transcribed first and is
+    deliberately left alone here. run_transcription substitutes the current
+    one, so this stays a pure lookup.
+
+    one_or_none() rather than first(): audio_hash is unique, so zero or one row
+    is the invariant. If a second ever appears this raises instead of quietly
+    picking whichever came back first.
+
+    A row that no longer parses is treated as a miss rather than an error. Add a
+    required field to TranscriptionResult and every previously cached row stops
+    validating — raising there would break transcription for all previously seen
+    audio until someone emptied the table by hand. A cache is disposable by
+    definition, so the stale entry becomes a miss, gets re-transcribed, and is
+    overwritten. Logged at warning because a burst of these means a schema
+    change just invalidated the cache, which is worth knowing.
+    """
+    with session_scope(engine) as session:
+        row = session.scalars(
+            select(TranscriptionCache).where(TranscriptionCache.audio_hash == audio_hash)
+        ).one_or_none()
+
+        if row is None:
+            return None
+
+        try:
+            return TranscriptionResult.model_validate_json(row.transcription_json)
+        except ValidationError:
+            logger.warning(
+                "Discarding unparseable cache entry for audio_hash=%s; re-transcribing",
+                audio_hash,
+            )
+            return None
+
+
+def _save_cache(audio_hash: str, result: TranscriptionResult, engine: Engine | None = None) -> None:
+    """Store a transcript against its audio hash.
+
+    model_dump_json() with no arguments — compact, no indent. This blob is read
+    by model_validate_json, never by a person.
+
+    A concurrent save of the same audio would raise IntegrityError on the unique
+    index. Left unhandled deliberately: the pipeline is single-process, and two
+    requests racing the same cache miss is both rare and harmless — one wins and
+    the other's work is discarded, which is the same outcome as never having
+    cached it.
+    """
+    with session_scope(engine) as session:
+        session.add(
+            TranscriptionCache(audio_hash=audio_hash, transcription_json=result.model_dump_json())
+        )
+
+
 def run_transcription(
     intake_result: IntakeResult, config: Config | None = None
 ) -> TranscriptionResult:
@@ -163,10 +230,14 @@ def run_transcription(
     Returns:
         TranscriptionResult with the same call_id as the intake.
 
-    Not yet implemented: the SHA-256 cache (needs the database layer, M5).
     """
     if config is None:
         config = load_config()
+
+    audio_hash = _compute_audio_hash(intake_result.temp_path)
+    cached = _check_cache(audio_hash)
+    if cached is not None:
+        return cached.model_copy(update={"call_id": intake_result.call_id})
 
     model = _get_whisper_model(config.whisper_model_size)
 
@@ -226,5 +297,7 @@ def run_transcription(
         low_confidence_ratio=low_confidence_ratio,
         flagged_low_confidence=flagged_low_confidence,
     )
+
+    _save_cache(audio_hash, result)
 
     return result
