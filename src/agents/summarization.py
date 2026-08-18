@@ -53,8 +53,7 @@ class SummarizationError(Exception):
     """Raised when the LLM call fails on every attempt.
 
     Deliberately not a dataclass — a frozen one would generate __init__(self)
-    and make SummarizationError("message") a TypeError, which is how ConfigError
-    broke earlier in this project.
+    and make SummarizationError("message") a TypeError.
     """
 
 
