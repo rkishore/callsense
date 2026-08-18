@@ -1,10 +1,17 @@
 """
-Display formatting — Pydantic results in, Markdown out.
+Formatting — Pydantic models in, text out.
 
-Consumed by the Gradio Analyze tab, where the summary and the QA scorecard sit
-side by side in a gr.Row, so both must render as Markdown at similar visual
-weight. Headings are ### rather than # for that reason: two panels of H1 beside
-each other overwhelm the transcript below them.
+Two audiences, and it matters which is which:
+
+- **Model input.** format_transcript_segments renders a transcript for an LLM
+  prompt. Summarization and QA scoring both consume it, which is why it lives
+  here rather than in either agent.
+- **User output.** format_summary and format_qa render Markdown for the Gradio
+  Analyze tab, where the two sit side by side in a gr.Row — hence ### headings
+  rather than #, since two panels of H1 overwhelm the transcript below them.
+
+Do not unify them. They share secs_to_mmss and nothing else: one is read by a
+model that will imitate its format, the other by a person.
 
 Display only, deliberately. Nothing here computes, defaults or re-derives a
 value — an empty call_purpose is a prompt problem, and a formatter that quietly
@@ -19,6 +26,7 @@ from src.graph.state import (
     QAScoreResult,
     SeverityLevel,
     SummaryResult,
+    TranscriptionSegment,
 )
 
 NOT_IDENTIFIED = "_None identified._"
@@ -57,6 +65,34 @@ def secs_to_mmss(seconds: float) -> str:
     s = int(seconds % 60)
 
     return f"{m:02d}:{s:02d}"
+
+
+def _format_transcript_segment(segment: TranscriptionSegment) -> str:
+    """One transcript line for an LLM prompt: "[MM:SS - MM:SS] Speaker: text".
+
+    Prompt format, not display format. The QA prompt asks the model to cite
+    timestamps in its justifications, and it will imitate whatever it sees here
+    — so this format and the citation format asked for in that prompt have to
+    agree.
+
+    The range is start-to-end position. An earlier version passed
+    (end_time - start_time), giving each segment's *duration*: a line at 147.3s
+    rendered as "[00:04]", a plausible-looking early-call timestamp that was
+    wrong by two and a half minutes. Every citation built on it would have been
+    wrong and none would have looked it.
+
+    speaker falls back to "Unknown" — it is Optional on the model, and "None:"
+    in a prompt invites the model to treat it as a participant.
+    """
+    timestamp = f"[{secs_to_mmss(segment.start_time)}-{secs_to_mmss(segment.end_time)}]"
+    speaker = "Unknown" if segment.speaker is None else segment.speaker
+    result = f"{timestamp} {speaker.title()}: {segment.text}"
+    return result
+
+
+def format_transcript_segments(segments: list[TranscriptionSegment]) -> str:
+    """The whole transcript as prompt text, one segment per line."""
+    return "\n".join(_format_transcript_segment(segment) for segment in segments)
 
 
 def _format_action_item(item: ActionItem) -> str:
