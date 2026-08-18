@@ -12,6 +12,7 @@ filled the gap would make a broken pipeline look healthy in a demo.
 """
 
 from src.graph.state import (
+    QA_DIMENSIONS,
     ActionItem,
     ComplianceFlag,
     QADimensionScore,
@@ -159,11 +160,13 @@ def format_qa(q: QAScoreResult) -> str:
     sections = [
         _section("### Overall Score", str(q.overall_score)),
         _section("### Individual dimensional scores"),
-        _section("#### Professionalism", _format_dimensional_score(q.professionalism)),
-        _section("#### Empathy", _format_dimensional_score(q.empathy)),
-        _section("#### Problem Resolution", _format_dimensional_score(q.problem_resolution)),
-        _section("#### Compliance", _format_dimensional_score(q.compliance)),
-        _section("#### Communication Clarity", _format_dimensional_score(q.communication_clarity)),
+        *(
+            _section(
+                f"#### {spec.label} ({spec.weight:.0%})",
+                _format_dimensional_score(getattr(q, name)),
+            )
+            for name, spec in QA_DIMENSIONS.items()
+        ),
         _section("### Compliance Flags", _format_compliance_flags(q.compliance_flags)),
     ]
 
