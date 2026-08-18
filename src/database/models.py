@@ -14,6 +14,15 @@ from datetime import UTC, datetime
 from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+# Column widths, named rather than repeated. SQLite ignores declared lengths
+# entirely, so an undersized column here passes every local test and truncates
+# only once this reaches a database that enforces them.
+UUID_LEN = 36  # str(uuid.UUID) — the pipeline's call_id and LangSmith trace ids
+SHA256_HEX_LEN = 64  # a SHA-256 hex digest, not a UUID; the first draft said 36
+FILENAME_LEN = 255  # conventional filesystem limit; Gradio temp names are long
+ENUM_LEN = 50  # longest StrEnum value, with room
+USER_LEN = 100  # audit_log actor — "system" today, a real account later
+
 
 class Base(DeclarativeBase):
     """Registry for every table in the project.
@@ -45,10 +54,10 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    call_id: Mapped[str] = mapped_column(String(36), index=True)
+    call_id: Mapped[str] = mapped_column(String(UUID_LEN), index=True)
 
-    action: Mapped[str] = mapped_column(String(50))
-    user: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(ENUM_LEN))
+    user: Mapped[str] = mapped_column(String(USER_LEN))
 
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
 
@@ -87,8 +96,47 @@ class TranscriptionCache(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    audio_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    audio_hash: Mapped[str] = mapped_column(String(SHA256_HEX_LEN), unique=True, index=True)
 
     transcription_json: Mapped[str] = mapped_column(Text())
 
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+
+class CallRecord(Base):
+    """The durable record of one analysed call.
+
+    call_id is unique here — one record per call — which is exactly the opposite
+    of audit_log, where it is deliberately not unique because a single call
+    produces several entries over its life. The two tables answer different
+    questions: "what is the outcome of this call?" against "what happened to
+    this call?".
+
+    The four _json columns are Text rather than JSON for the same reason as
+    transcription_json: they hold Pydantic serialisations, and the reader wants
+    model_validate_json to parse the string rather than SQLAlchemy handing back
+    a dict that would have to be re-serialised before Pydantic could validate
+    it.
+
+    transcript_text is stored redacted. It is written after stage 4, so what
+    persists is what the LLM saw — never the raw transcript.
+
+    trace_id is optional because LangSmith tracing may be off. A null here means
+    untraced, not failed.
+    """
+
+    __tablename__ = "call_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    call_id: Mapped[str] = mapped_column(String(UUID_LEN), unique=True, index=True)
+
+    status: Mapped[str] = mapped_column(String(ENUM_LEN))
+    audio_filename: Mapped[str] = mapped_column(String(FILENAME_LEN))
+
+    transcript_text: Mapped[str] = mapped_column(Text())
+    summary_json: Mapped[str] = mapped_column(Text())
+    qa_scores_json: Mapped[str] = mapped_column(Text())
+    report_json: Mapped[str] = mapped_column(Text())
+
+    processed_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    trace_id: Mapped[str | None] = mapped_column(String(UUID_LEN), default=None)
