@@ -31,6 +31,7 @@ from src.utils.formatters import format_qa, format_summary, secs_to_mmss
         pytest.param(0, "00:00", id="zero"),
         pytest.param(59.9, "00:59", id="truncates-rather-than-rounds"),
         pytest.param(60, "01:00", id="minute-boundary"),
+        pytest.param(90, "01:30", id="from-self-check"),
         # A 3600-second call is legal, so minutes exceed 59 rather than rolling
         # into hours. Looks like an overflow bug and is not.
         pytest.param(3600, "60:00", id="hour-does-not-roll-over"),
@@ -123,7 +124,7 @@ def test_qa_renders_flags_and_the_empty_case():
     assert "🔴" in flagged
 
     empty = format_qa(_qa([]))
-    assert "_No compliance issues identified._" in empty
+    assert "_No compliance issues detected._" in empty
 
     # Every dimension label and weight reaches the output, so a dimension added
     # to QA_DIMENSIONS cannot be silently missing from the scorecard.

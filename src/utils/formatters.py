@@ -32,7 +32,7 @@ from src.graph.state import (
 NOT_IDENTIFIED = "_None identified._"
 
 # No flags is good news, so it gets its own wording rather than the neutral one.
-NO_COMPLIANCE_ISSUES = "_No compliance issues identified._"
+NO_COMPLIANCE_ISSUES = "_No compliance issues detected._"
 
 # Severity carries more at a glance than the word does. A scorecard where one
 # critical flag is visually distinct from three low ones reads faster than four
