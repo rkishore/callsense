@@ -1,0 +1,23 @@
+# Keep the build context small and the image clean. Without this, COPY . drags in
+# the virtualenv, the git history, the reference audio and any local database.
+.venv/
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Never ship secrets or local state
+.env
+data/*.db
+data/samples/
+
+# Not needed at runtime
+tests/
+_spikes/
+_reference/
+docs/
+htmlcov/
+*.egg-info/

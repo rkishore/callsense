@@ -47,11 +47,15 @@ def main() -> None:
 
     graph = compile_workflow(config, engine)
 
-    # HuggingFace Spaces sets SPACE_ID and requires binding to all interfaces;
-    # locally, loopback only.
-    on_spaces = bool(os.environ.get("SPACE_ID"))
-    server_name = "0.0.0.0" if on_spaces else "127.0.0.1"  # noqa: S104
-    logger.info("Starting Gradio on %s:7860 (spaces=%s)", server_name, on_spaces)
+    # Loopback locally; all interfaces where the process is not reachable on
+    # loopback from outside. Inside a container 127.0.0.1 is the *container's*
+    # loopback, so `docker run -p 7860:7860` would map a port nothing listens on
+    # and refuse the connection — the Dockerfile therefore sets
+    # GRADIO_SERVER_NAME explicitly. HuggingFace Spaces needs the same and
+    # advertises itself through SPACE_ID.
+    default_host = "0.0.0.0" if os.environ.get("SPACE_ID") else "127.0.0.1"  # noqa: S104
+    server_name = os.environ.get("GRADIO_SERVER_NAME", default_host)
+    logger.info("Starting Gradio on %s:7860", server_name)
 
     build_app(graph, config).launch(server_name=server_name, server_port=7860)
 
