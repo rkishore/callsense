@@ -56,3 +56,24 @@ def route_after_qa(state: PipelineState) -> str:
         )
         else "report"
     )
+
+
+def route_after_injection(state: PipelineState) -> str:
+    """A detected injection stops the pipeline before any LLM sees the text.
+
+    Without this the guard runs and stops nothing: injection_check_node would
+    set the status, and a plain edge would carry the attacker-controlled
+    transcript straight on through redaction into both LLM calls.
+
+    Routes to supervisor review rather than to the error node, which is a
+    deliberate deviation — the milestone's wiring says "pii redact | error"
+    while the same milestone has the injection node set
+    status="flagged_for_review", and error_node would immediately overwrite that
+    with FAILED. The two mean different things: "error" is we could not analyse
+    this call, "flagged_for_review" is we analysed it and stopped on purpose.
+    Conflating them would count every successfully blocked attack as a pipeline
+    failure on the observability dashboard.
+    """
+    if state["injection_scan"].injection_detected:
+        return "supervisor_review"
+    return "redact_pii"
