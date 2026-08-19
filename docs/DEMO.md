@@ -7,10 +7,14 @@ reconstructed on the day.
 
 **Run `make demo`, not `make run`.** It sets `WHISPER_MODEL_SIZE=base`.
 
-This is not cosmetic. On `tiny`, a dictated card number transcribes as `4.539-8712-3456-789-0`, and
-the leading `4.` sits outside the matched span — so the redaction shows `4.[REDACTED_CREDIT_CARD]`
-on camera. `base` renders it as `4539-8712-3456-7890` and redacts cleanly. `tiny` stays the default
-everywhere else; the test suite mocks Whisper and never cares.
+This is not cosmetic, and it is a trade rather than an upgrade. On `tiny` a dictated card number
+transcribes as `4.539-8712-3456-789-0`, leaving `4.` outside the matched span and showing
+`4.[REDACTED_CREDIT_CARD]` on camera. `base` renders it cleanly.
+
+**But `base` costs you the phone number in `sample_01`.** It transcribes spoken "eight oh one" as
+`A-01-431-1000` — a letter-prefixed reference code — which matches no phone pattern, where `tiny`
+writes `801-431-1000` and it redacts. No single setting gets both. The card number is the stronger
+beat, so `base` wins and the phone-number claim comes out of beat 2 below.
 
 **Decide on `launch(show_error=True)`.** Right for development, probably wrong for a recording —
 it surfaces internal detail in the error toast.
@@ -22,7 +26,7 @@ from the PDFs and JSON the pipeline writes. A stale one from testing can confuse
 
 | File | Purpose | Notes |
 |---|---|---|
-| `data/samples/sample_01.mp3` | the normal path | Real service call. Contains a genuine spoken phone number — redaction on real audio, not a synthetic file |
+| `data/samples/sample_01.mp3` | the normal path | Real service call. Its spoken phone number redacts on `tiny` but **not** on `base` — do not demo redaction from this file |
 | `data/demo/card.mp3` | PII redaction | TTS. Varied digits deliberately: repeated digits defeat ASR counting, and `4111-1111-1111-1111` transcribes as 25 digits |
 | `data/demo/injection.mp3` | injection blocked | TTS. Trips `ignore_previous` and `prompt_leak` — two patterns, so the report shows a list rather than a single name |
 | an `.ogg`, and a 51 MB file | rejection paths | Trivially synthetic. `gr.Audio` has no format allow-list, so the validator is what rejects them |
@@ -36,7 +40,10 @@ Seven beats, in this order. Each one shows something the previous cannot.
 
 1. **`sample_01.mp3` end to end** — speaker-labelled transcript, summary, QA scorecard, PDF.
    Establishes that the ordinary path works before anything clever.
-2. **The real phone number redacted** — from a genuine customer service call, not a prop.
+2. **The transcript, with `[LOW CONF]` markers** — real diarization, real per-segment confidence.
+   Markers appear in blocks, not singly, because `avg_logprob` is computed per 30-second decode
+   window. Do **not** promise phone-number redaction here: on `base` that number transcribes as
+   `A-01-431-1000` and legitimately does not match. See the note above.
 3. **`card.mp3`** — `[REDACTED_CREDIT_CARD]` in the transcript the LLM received. The point is not
    that redaction happened but *where*: before the third-party call, not after.
 4. **`injection.mp3`** — pipeline halts before any LLM call, with `ignore_previous` and
@@ -70,3 +77,9 @@ Named in the README rather than hidden: spoken-word digits escape a digit regex;
 defeat ASR counting; only structured PII is redacted, so names and addresses still reach the LLM;
 the 50 MB cap and the 60-minute cap are in tension at ordinary mp3 bitrates; and five of the ten
 reference calls open with a narrator, so the first-speaker-is-the-agent assumption mislabels them.
+
+The strongest one to volunteer, because it is counterintuitive and measured: **a larger Whisper
+model can reduce PII detection.** `base` renders a spoken "eight oh one" as the reference code
+`A-01-431-1000`, which matches no phone pattern, where `tiny` writes `801-431-1000` and it redacts.
+Redaction acts on the transcript, so the model's interpretive choices decide what is detectable —
+and more capable is not the same as more literal.

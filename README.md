@@ -50,9 +50,21 @@ redactor absorbs over-long runs whole rather than letting a shorter pattern matc
 this degrades the transcript rather than leaking, but the digits it redacts are not the digits that
 were spoken.
 
-**Model size affects redaction, not just accuracy.** On `tiny`, a dictated card number renders as
-`4.539-8712-3456-789-0`, and the leading `4.` survives redaction. `base` renders it cleanly. Use
-`WHISPER_MODEL_SIZE=base` or larger where PII redaction matters.
+**Model size affects redaction, and not monotonically.** Redaction can only act on what the
+transcript says, so the model's interpretive choices decide what is detectable — and a *larger*
+model is not reliably better. Measured on the same recording:
+
+| | dictated card number | spoken phone number in `sample_01` |
+|---|---|---|
+| `tiny` | `4.539-8712-3456-789-0` — leading `4.` escapes | `801-431-1000` — **redacted** |
+| `base` | `4539-8712-3456-7890` — **redacted** | `A-01-431-1000` — escapes |
+| `small` | — | `A01-431-1000` — escapes |
+
+`base` and `small` hear spoken "eight oh one" and, in context, render it as a letter-prefixed
+reference code; `tiny` simply writes the digits. So the more capable model produces a transcript
+the redactor cannot act on. No single setting redacts both, and the patterns are deliberately not
+widened to tolerate a letter prefix — that would over-fit one ASR artifact at the cost of false
+positives on ordinary text.
 
 **Only structured PII is redacted.** SSN, credit card, email and phone are covered. Names,
 addresses, employers and dates of birth are not — `sample_01` alone contains *"my name is John
