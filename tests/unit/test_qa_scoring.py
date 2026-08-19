@@ -11,67 +11,10 @@ from unittest import mock
 import pytest
 
 from src.agents import qa_scoring
-from src.graph.state import (
-    QADimensionScore,
-    QAScoreResult,
-    ResolutionStatus,
-    SummaryResult,
-    TranscriptionResult,
-    TranscriptionSegment,
-)
-from src.utils.config import Config
+from src.graph.state import QAScoreResult
+from tests.conftest import make_config, make_qa_scores, make_summary, make_transcript
 
 CALL_ID = uuid.uuid4()
-
-
-def _config() -> Config:
-    """Injected so the tests never read .env or need a real key."""
-    return Config(llm_provider="openai", openai_api_key="sk-test", max_retries_per_node=3)
-
-
-def _transcript() -> TranscriptionResult:
-    return TranscriptionResult(
-        call_id=CALL_ID,
-        full_text="Thanks for calling.",
-        segments=[
-            TranscriptionSegment(
-                text="Thanks for calling.", start_time=0.0, end_time=2.0, confidence=0.9
-            )
-        ],
-        low_confidence_ratio=0.0,
-        flagged_low_confidence=False,
-    )
-
-
-def _summary() -> SummaryResult:
-    return SummaryResult(
-        call_id=CALL_ID,
-        call_purpose="Dispute a charge.",
-        key_discussion_points=[],
-        action_items=[],
-        resolution_status=ResolutionStatus.RESOLVED,
-        sentiment_trajectory="Concerned -> Reassured",
-        entities=[],
-    )
-
-
-def _llm_response(overall_score: float, **scores: int) -> QAScoreResult:
-    """A QAScoreResult as the LLM would return it.
-
-    call_id is deliberately a fresh UUID rather than CALL_ID: the model invents
-    one because the field is required, and the provider spike caught OpenAI
-    returning 12345678-abcd-ef01-2345-6789abcdef01. Every test here therefore
-    also checks that it gets overwritten.
-    """
-    return QAScoreResult(
-        call_id=uuid.uuid4(),
-        **{
-            name: QADimensionScore(score=score, justification="Because.")
-            for name, score in scores.items()
-        },
-        overall_score=overall_score,
-        compliance_flags=[],
-    )
 
 
 def _run(llm_response: QAScoreResult) -> QAScoreResult:
@@ -85,7 +28,11 @@ def _run(llm_response: QAScoreResult) -> QAScoreResult:
         mock_get_llm.return_value.with_structured_output.return_value.invoke.return_value = (
             llm_response
         )
-        return qa_scoring.run_qa_scoring(_transcript(), _summary(), _config())
+        return qa_scoring.run_qa_scoring(
+            make_transcript(call_id=CALL_ID),
+            make_summary(call_id=CALL_ID),
+            make_config(max_retries_per_node=3),
+        )
 
 
 def test_overall_score_is_recomputed_not_taken_from_the_llm():
@@ -98,7 +45,7 @@ def test_overall_score_is_recomputed_not_taken_from_the_llm():
     itself: a test that only checked `== 5.0` would pass on an implementation
     that trusted the model, in any case where the model happened to be right.
     """
-    llm_said = _llm_response(
+    llm_said = make_qa_scores(
         overall_score=3.0,
         professionalism=5,
         empathy=5,
@@ -124,7 +71,7 @@ def test_each_dimension_carries_its_own_weight():
         1x0.15 + 2x0.20 + 3x0.30 + 4x0.20 + 5x0.15 = 3.0
     """
     result = _run(
-        _llm_response(
+        make_qa_scores(
             overall_score=1.0,
             professionalism=1,
             empathy=2,
@@ -143,7 +90,7 @@ def test_the_models_call_id_is_replaced_with_the_transcripts():
     A valid UUID that is complete fiction passes validation silently, so
     nothing downstream would notice a report keyed to it.
     """
-    llm_said = _llm_response(
+    llm_said = make_qa_scores(
         overall_score=3.0,
         professionalism=3,
         empathy=3,
@@ -174,7 +121,11 @@ def test_qa_scoring_error_after_retries_are_exhausted():
         invoke.side_effect = RuntimeError("provider exploded")
 
         with pytest.raises(qa_scoring.QAScoringError, match="after 3"):
-            qa_scoring.run_qa_scoring(_transcript(), _summary(), _config())
+            qa_scoring.run_qa_scoring(
+                make_transcript(call_id=CALL_ID),
+                make_summary(call_id=CALL_ID),
+                make_config(max_retries_per_node=3),
+            )
 
     assert invoke.call_count == 3
     # Slept between attempts, but not after the final failure — sleeping there

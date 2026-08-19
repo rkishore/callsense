@@ -5,22 +5,16 @@ Integration rather than unit: these invoke the whole pipeline and assert on
 where it ended up, not on what any one node returned.
 """
 
-import uuid
 from unittest import mock
 
 from src.database import connection
 from src.graph.state import (
     AudioInput,
     CallStatus,
-    ComplianceFlag,
-    QADimensionScore,
-    QAScoreResult,
-    ResolutionStatus,
-    SummaryResult,
 )
 from src.graph.workflow import compile_workflow
 from src.utils.config import Config
-from tests.conftest import make_segments_info, make_wav_bytes
+from tests.conftest import make_qa_scores, make_segments_info, make_summary, make_wav_bytes
 
 
 def test_invalid_audio_returns_failed_status(db_engine):
@@ -56,30 +50,6 @@ def test_invalid_audio_returns_failed_status(db_engine):
     assert result["status"] == CallStatus.FAILED
     assert "transcription" not in result
     assert "report" not in result
-
-
-def _summary() -> SummaryResult:
-    return SummaryResult(
-        call_id=uuid.uuid4(),
-        call_purpose="Dispute a charge.",
-        key_discussion_points=[],
-        action_items=[],
-        resolution_status=ResolutionStatus.RESOLVED,
-        sentiment_trajectory="Concerned -> Reassured",
-        entities=[],
-    )
-
-
-def _qa_scores(flags: list[ComplianceFlag], **scores: int) -> QAScoreResult:
-    return QAScoreResult(
-        call_id=uuid.uuid4(),
-        **{
-            name: QADimensionScore(score=score, justification="Because.")
-            for name, score in scores.items()
-        },
-        overall_score=3.0,
-        compliance_flags=flags,
-    )
 
 
 def test_valid_audio_returns_completed_status(tmp_path):
@@ -140,11 +110,11 @@ def test_valid_audio_returns_completed_status(tmp_path):
         mock_whisper.return_value.transcribe.return_value = make_segments_info()
 
         mock_summary_llm.return_value.with_structured_output.return_value.invoke.return_value = (
-            _summary()
+            make_summary()
         )
 
         mock_qa_llm.return_value.with_structured_output.return_value.invoke.return_value = (
-            _qa_scores(
+            make_qa_scores(
                 [],
                 professionalism=5,
                 empathy=5,

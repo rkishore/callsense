@@ -2,56 +2,13 @@ import uuid
 
 from src.graph.edges import route_after_intake, route_after_qa, route_after_transcription
 from src.graph.state import (
-    AudioProperties,
     ComplianceFlag,
-    IntakeResult,
-    PIIScanResult,
     PipelineState,
-    QADimensionScore,
-    QAScoreResult,
     SeverityLevel,
-    TranscriptionResult,
-    TranscriptionSegment,
 )
+from tests.conftest import make_intake, make_qa_scores, make_transcript
 
 CALL_ID = uuid.uuid4()
-
-
-def _intake(validation_passed: bool) -> IntakeResult:
-    return IntakeResult(
-        call_id=CALL_ID,
-        validation_passed=validation_passed,
-        pii_scan=PIIScanResult(pii_detected=False, pii_count=0, pii_types=[]),
-        audio_properties=AudioProperties(
-            duration_seconds=60.0, size_bytes=1024000, sample_rate=16000, channels=2, format="mp3"
-        ),
-    )
-
-
-def _transcript() -> TranscriptionResult:
-    return TranscriptionResult(
-        call_id=CALL_ID,
-        full_text="Thanks for calling.",
-        segments=[
-            TranscriptionSegment(
-                text="Thanks for calling.", start_time=0.0, end_time=2.0, confidence=0.9
-            )
-        ],
-        low_confidence_ratio=0.0,
-        flagged_low_confidence=False,
-    )
-
-
-def _qa_scores(flags: list[ComplianceFlag], **scores: int) -> QAScoreResult:
-    return QAScoreResult(
-        call_id=uuid.uuid4(),
-        **{
-            name: QADimensionScore(score=score, justification="Because.")
-            for name, score in scores.items()
-        },
-        overall_score=3.0,
-        compliance_flags=flags,
-    )
 
 
 def _compliance_flags(include_critical_severity: bool) -> list[ComplianceFlag]:
@@ -90,7 +47,7 @@ def _compliance_flags(include_critical_severity: bool) -> list[ComplianceFlag]:
 
 def test_validated_audio_routes_to_transcription():
     """The ordinary path: intake passed, so transcribe."""
-    intake_result = _intake(True)
+    intake_result = make_intake(validation_passed=True)
     state = PipelineState(intake=intake_result)
     assert route_after_intake(state) == "transcribe"
 
@@ -101,7 +58,7 @@ def test_invalid_audio_routes_to_error():
     Intake has already checked magic bytes, size and duration, so a failure
     means the upload was never analysable — there is nothing to degrade into.
     """
-    intake_result = _intake(False)
+    intake_result = make_intake(validation_passed=False)
     state = PipelineState(intake=intake_result)
     assert route_after_intake(state) == "error"
 
@@ -113,8 +70,8 @@ def test_after_transcription_always_routes_to_summarize():
     low-confidence halt, say — has somewhere to live without rewiring the graph.
     A test here means adding that condition breaks something visible.
     """
-    intake_result = _intake(True)
-    state = PipelineState(intake=intake_result, transcription=_transcript())
+    intake_result = make_intake(validation_passed=True)
+    state = PipelineState(intake=intake_result, transcription=make_transcript())
     assert route_after_transcription(state) == "summarize"
 
 
@@ -126,7 +83,7 @@ def test_low_severity_flag_routes_to_report():
     that proves *only* critical escalates, not merely that some severities do
     not.
     """
-    qa_scores = _qa_scores(
+    qa_scores = make_qa_scores(
         _compliance_flags(False),
         professionalism=5,
         empathy=5,
@@ -149,7 +106,7 @@ def test_critical_severity_flag_routes_to_supervisor():
     The other half of the pair: a router hardcoded to "report" passes the test
     above and fails this one. Neither proves the rule alone.
     """
-    qa_scores = _qa_scores(
+    qa_scores = make_qa_scores(
         _compliance_flags(True),
         professionalism=5,
         empathy=5,

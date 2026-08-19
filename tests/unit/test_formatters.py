@@ -16,13 +16,12 @@ from src.graph.state import (
     ActionItem,
     ComplianceFlag,
     Entity,
-    QADimensionScore,
-    QAScoreResult,
     ResolutionStatus,
     SeverityLevel,
     SummaryResult,
 )
 from src.utils.formatters import format_qa, format_summary, secs_to_mmss
+from tests.conftest import make_qa_scores
 
 
 @pytest.mark.parametrize(
@@ -68,20 +67,6 @@ def _sparse_summary() -> SummaryResult:
     )
 
 
-def _qa(flags: list[ComplianceFlag]) -> QAScoreResult:
-    dim = QADimensionScore(score=3, justification="Adequate.")
-    return QAScoreResult(
-        call_id=uuid.uuid4(),
-        professionalism=dim,
-        empathy=dim,
-        problem_resolution=dim,
-        compliance=dim,
-        communication_clarity=dim,
-        overall_score=3.0,
-        compliance_flags=flags,
-    )
-
-
 def test_summary_renders_optional_fields_without_leaking_reprs():
     """The bug this exists for: interpolating a model put "deadline=None" on screen.
 
@@ -109,7 +94,7 @@ def test_qa_renders_flags_and_the_empty_case():
     they cannot scrub to 147.3.
     """
     flagged = format_qa(
-        _qa(
+        make_qa_scores(
             [
                 ComplianceFlag(
                     violation_description="Action taken without verification.",
@@ -123,7 +108,7 @@ def test_qa_renders_flags_and_the_empty_case():
     assert "147.3" not in flagged
     assert "🔴" in flagged
 
-    empty = format_qa(_qa([]))
+    empty = format_qa(make_qa_scores([]))
     assert "_No compliance issues detected._" in empty
 
     # Every dimension label and weight reaches the output, so a dimension added

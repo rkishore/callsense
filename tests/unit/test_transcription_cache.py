@@ -5,15 +5,12 @@ Deliberately a separate file from test_transcription.py, whose autouse fixture
 stubs the cache out — these tests need the real functions.
 """
 
-import uuid
 from unittest import mock
 
 from src.agents import transcription
-from src.agents.intake import _EMPTY_AUDIO_PROPS, _EMPTY_PII
 from src.database import connection
-from src.graph.state import IntakeResult
 from src.utils.config import Config
-from tests.conftest import make_segments_info
+from tests.conftest import make_intake, make_segments_info
 
 
 def test_compute_audio_hash_is_content_addressed(tmp_path):
@@ -46,18 +43,6 @@ def test_compute_audio_hash_is_content_addressed(tmp_path):
     assert len(digest_a) == len(digest_b) == len(digest_c) == 64
     # Stable across calls — the chunked read must leave no state behind.
     assert digest_a == transcription._compute_audio_hash(a)
-
-
-def _make_intake_result(tmp_path):
-    intake_result = IntakeResult(
-        call_id=uuid.uuid4(),
-        validation_passed=True,
-        pii_scan=_EMPTY_PII,
-        audio_properties=_EMPTY_AUDIO_PROPS,
-        temp_path=tmp_path,
-    )
-
-    return intake_result
 
 
 def test_second_call_with_same_audio_returns_cached_result(tmp_path):
@@ -93,8 +78,8 @@ def test_second_call_with_same_audio_returns_cached_result(tmp_path):
     connection.init_db(connection.get_engine(config))
 
     (fake_segments, fake_info) = make_segments_info()
-    intake_result1 = _make_intake_result(audio)
-    intake_result2 = _make_intake_result(audio)
+    intake_result1 = make_intake(temp_path=audio)
+    intake_result2 = make_intake(temp_path=audio)
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info)

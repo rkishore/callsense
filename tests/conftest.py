@@ -9,12 +9,26 @@ import io
 import math
 import struct
 import types
+import uuid
 import wave
 
 import pytest
 from sqlalchemy import create_engine
 
+from src.agents.intake import _EMPTY_AUDIO_PROPS, _EMPTY_PII
 from src.database import connection
+from src.graph.state import (
+    QA_DIMENSIONS,
+    ComplianceFlag,
+    IntakeResult,
+    QADimensionScore,
+    QAScoreResult,
+    ResolutionStatus,
+    SummaryResult,
+    TranscriptionResult,
+    TranscriptionSegment,
+)
+from src.utils.config import Config
 
 
 def make_wav_bytes(
@@ -176,4 +190,101 @@ def make_segments_info():
         fake_segment("Do you like me?", 4.1, 4.5),
     ]
 
-    return (fake_segments, fake_info)
+    return (fake_segments, fake_info())
+
+
+# ── Model builders ───────────────────────────────────────────────────────────
+# Plain functions, imported — not fixtures. They take arguments, so they cannot
+# be fixtures, and the same distinction applies as with make_wav_bytes.
+#
+# Every parameter has a working default so a test overrides only what it is
+# actually testing. make_qa_scores() bare is a valid all-3s result, which is what
+# lets a test that does not care about scores ignore them entirely.
+
+
+def make_config(**overrides) -> Config:
+    """A Config that needs no .env and no real key."""
+    defaults = {
+        "llm_provider": "openai",
+        "openai_api_key": "sk-test",
+        "confidence_threshold": 0.6,
+        "low_confidence_halt_ratio": 0.8,
+    }
+    return Config(**{**defaults, **overrides})
+
+
+def make_transcript(
+    call_id: uuid.UUID | None = None,
+    full_text: str = "Thanks for calling.",
+    segments: list[TranscriptionSegment] | None = None,
+) -> TranscriptionResult:
+    """A minimal TranscriptionResult, one segment unless told otherwise."""
+    if segments is None:
+        segments = [
+            TranscriptionSegment(text=full_text, start_time=0.0, end_time=2.0, confidence=0.9)
+        ]
+    return TranscriptionResult(
+        call_id=call_id or uuid.uuid4(),
+        full_text=full_text,
+        segments=segments,
+        low_confidence_ratio=0.0,
+        flagged_low_confidence=False,
+    )
+
+
+def make_summary(call_id: uuid.UUID | None = None, **overrides) -> SummaryResult:
+    """A minimal SummaryResult. Pass any field to override it."""
+    defaults = {
+        "call_purpose": "Dispute a charge.",
+        "key_discussion_points": [],
+        "action_items": [],
+        "resolution_status": ResolutionStatus.RESOLVED,
+        "sentiment_trajectory": "Concerned -> Reassured",
+        "entities": [],
+    }
+    return SummaryResult(call_id=call_id or uuid.uuid4(), **{**defaults, **overrides})
+
+
+def make_qa_scores(
+    flags: list[ComplianceFlag] | tuple = (),
+    overall_score: float = 3.0,
+    call_id: uuid.UUID | None = None,
+    justification: str = "Because.",
+    **scores: int,
+) -> QAScoreResult:
+    """A QAScoreResult with every dimension at 3 unless named in **scores.
+
+    Dimension names come from QA_DIMENSIONS rather than being hardcoded, so a
+    dimension added there cannot leave this builder constructing an invalid
+    model.
+
+    call_id defaults to a *fresh* UUID, which is deliberate: this stands in for
+    what an LLM returns, and the model always invents one. Tests asserting the
+    pipeline overwrites it rely on that difference.
+    """
+    dimensions = dict.fromkeys(QA_DIMENSIONS, 3)
+    dimensions.update(scores)
+    return QAScoreResult(
+        call_id=call_id or uuid.uuid4(),
+        **{
+            name: QADimensionScore(score=score, justification=justification)
+            for name, score in dimensions.items()
+        },
+        overall_score=overall_score,
+        compliance_flags=list(flags),
+    )
+
+
+def make_intake(
+    validation_passed: bool = True,
+    call_id: uuid.UUID | None = None,
+    temp_path: str | None = "/tmp/does-not-matter.wav",
+) -> IntakeResult:
+    """A minimal IntakeResult with empty PII and audio-property records."""
+    return IntakeResult(
+        call_id=call_id or uuid.uuid4(),
+        validation_passed=validation_passed,
+        pii_scan=_EMPTY_PII,
+        audio_properties=_EMPTY_AUDIO_PROPS,
+        temp_path=temp_path,
+    )

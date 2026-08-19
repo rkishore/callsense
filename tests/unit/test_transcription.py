@@ -4,16 +4,14 @@ Unit tests for transcription functions in src/agents/transcription.py.
 
 import sys
 import types
-import uuid
 from unittest import mock
 
 import pytest
 
 from src.agents import transcription
-from src.agents.intake import _EMPTY_AUDIO_PROPS, _EMPTY_PII
-from src.graph.state import IntakeResult, SpeakerRole
+from src.graph.state import SpeakerRole
 from src.utils.config import Config
-from tests.conftest import fake_info, fake_segment, make_segments_info
+from tests.conftest import fake_info, fake_segment, make_intake, make_segments_info
 
 
 @pytest.fixture(autouse=True)
@@ -94,21 +92,9 @@ def _low_conf_segment(text=" low", start=0.0, end=1.0):
     return fake_segment(text=text, start=start, end=end, avg_logprob=-1.0, no_speech_prob=0.0)
 
 
-def _make_intake_result():
-    intake_result = IntakeResult(
-        call_id=uuid.uuid4(),
-        validation_passed=True,
-        pii_scan=_EMPTY_PII,
-        audio_properties=_EMPTY_AUDIO_PROPS,
-        temp_path="/tmp/does-not-matter.wav",
-    )
-
-    return intake_result
-
-
 def test_transcription_threads_the_call_id():
     (fake_segments, fake_info) = make_segments_info()
-    intake_result = _make_intake_result()
+    intake_result = make_intake()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info)
@@ -118,7 +104,7 @@ def test_transcription_threads_the_call_id():
 
 def test_transcription_uses_the_whisper_model():
     (fake_segments, fake_info) = make_segments_info()
-    intake_result = _make_intake_result()
+    intake_result = make_intake()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info)
@@ -130,7 +116,7 @@ def test_transcription_uses_the_whisper_model():
 
 def test_transcription_preserves_segment_text():
     (fake_segments, fake_info) = make_segments_info()
-    intake_result = _make_intake_result()
+    intake_result = make_intake()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info)
@@ -166,7 +152,7 @@ def test_low_confidence_ratio_and_flag(n_high, n_low, expected_ratio, expected_f
 
     fake_segments = [_high_conf_segment() for _ in range(n_high)]
     fake_segments += [_low_conf_segment() for _ in range(n_low)]
-    intake_result = _make_intake_result()
+    intake_result = make_intake()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info())
@@ -208,7 +194,7 @@ def test_transcription_assigns_speakers_from_cleaned_text():
         fake_segment("Okay.", 4.5, 5.0),
     ]
 
-    intake_result = _make_intake_result()
+    intake_result = make_intake()
 
     with mock.patch("src.agents.transcription._get_whisper_model") as mock_get_model:
         mock_get_model.return_value.transcribe.return_value = (fake_segments, fake_info())
