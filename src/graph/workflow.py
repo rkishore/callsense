@@ -26,7 +26,7 @@ from sqlalchemy import Engine
 
 from src.agents.intake import run_intake
 from src.agents.qa_scoring import run_qa_scoring
-from src.agents.report import compile_report
+from src.agents.report import compile_report, persist_report
 from src.agents.summarization import run_summarization
 from src.agents.transcription import run_transcription
 from src.graph.edges import (
@@ -148,6 +148,7 @@ def report_node(state: PipelineState) -> dict:
         CallStatus.COMPLETED,
         processed_at=datetime.now(UTC),
     )
+    persist_report(result)
     return {"report": result, "status": CallStatus.COMPLETED}
 
 
