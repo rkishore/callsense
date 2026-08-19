@@ -207,3 +207,31 @@ def format_qa(q: QAScoreResult) -> str:
     ]
 
     return "\n\n".join(sections)
+
+
+def _format_transcript_segment_for_display(
+    segment: TranscriptionSegment, confidence_threshold: float
+) -> str:
+    """One transcript line for a person: "[MM:SS] [LOW CONF] Speaker: text".
+
+    Display format, not prompt format. Start time only — a reader scrubbing to
+    a moment wants one number, where the LLM benefits from the range.
+
+    The marker is a conditional string rather than an insertion: it is "" when
+    confidence is fine, so the line is assembled once from parts instead of
+    being built and then edited.
+    """
+    timestamp = f"{secs_to_mmss(segment.start_time)}"
+    marker = " [LOW CONF]" if segment.confidence < confidence_threshold else ""
+    speaker = "Unknown" if segment.speaker is None else segment.speaker.title()
+
+    return f"[{timestamp}]{marker} {speaker}: {segment.text}"
+
+
+def format_transcript_for_display(
+    segments: list[TranscriptionSegment], confidence_threshold: float
+) -> str:
+    return "\n".join(
+        _format_transcript_segment_for_display(segment, confidence_threshold)
+        for segment in segments
+    )
