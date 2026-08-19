@@ -1,11 +1,7 @@
-"""
-Entrypoint. Thin by design — everything here is startup wiring.
+"""Entrypoint. Startup wiring only: schema, Whisper warm-up, graph compile, launch.
 
-Three things happen once, at boot, that would otherwise happen per request:
-the database schema is created, the Whisper model is loaded, and the graph is
-compiled. The Whisper load is the one that matters for the demo: it costs
-5-30 seconds, and paying it inside the first upload makes a working system look
-broken.
+The Whisper load happens here rather than per request: it costs 5-30 seconds, and
+paying it inside the first upload makes a working system look broken.
 """
 
 import os
@@ -22,15 +18,10 @@ logger = get_logger(__name__)
 
 
 def build_app(graph, config: Config) -> gr.Blocks:
-    """Construct the UI without launching it.
-
-    Separate from the launch so tests can build the interface without starting a
-    server, and so the Observability tab has an obvious place to go.
-    """
+    """Construct the UI without launching it, so tests need no server."""
     with gr.Blocks(title="callsense") as demo:
         gr.Markdown("# callsense\nCall centre intelligence — transcript, summary and QA scoring.")
         build_analyze_tab(graph, config)
-
     return demo
 
 
@@ -41,18 +32,12 @@ def main() -> None:
     init_db(engine)
     logger.info("Database ready at %s", config.db_path)
 
-    # Warm the singleton now rather than inside the first request.
     logger.info("Loading Whisper model size=%s", config.whisper_model_size)
     _get_whisper_model(config.whisper_model_size)
 
     graph = compile_workflow(config, engine)
 
-    # Loopback locally; all interfaces where the process is not reachable on
-    # loopback from outside. Inside a container 127.0.0.1 is the *container's*
-    # loopback, so `docker run -p 7860:7860` would map a port nothing listens on
-    # and refuse the connection — the Dockerfile therefore sets
-    # GRADIO_SERVER_NAME explicitly. HuggingFace Spaces needs the same and
-    # advertises itself through SPACE_ID.
+    # Loopback locally; containers and Spaces override it — see the Dockerfile.
     default_host = "0.0.0.0" if os.environ.get("SPACE_ID") else "127.0.0.1"  # noqa: S104
     server_name = os.environ.get("GRADIO_SERVER_NAME", default_host)
     logger.info("Starting Gradio on %s:7860", server_name)
