@@ -35,7 +35,7 @@ from src.graph.edges import (
     route_after_qa,
     route_after_transcription,
 )
-from src.graph.state import AuditAction, CallStatus, PipelineState
+from src.graph.state import AuditAction, CallStatus, PipelineState, SeverityLevel
 from src.security.audit import AuditLogger
 from src.security.injection_detector import detect_injection
 from src.security.pii_redactor import detect_and_redact_pii
@@ -168,6 +168,23 @@ def supervisor_review_node(state: PipelineState) -> dict:
     Reached when any compliance flag is critical, however well the call scored
     overall.
     """
+    if "qa_scores" not in state:
+        return {"status": CallStatus.FLAGGED_FOR_REVIEW}
+
+    compliance_flags = state["qa_scores"].compliance_flags
+    critical_severity_flags = [
+        flag for flag in compliance_flags if flag.severity == SeverityLevel.CRITICAL
+    ]
+    if critical_severity_flags:
+        AuditLogger().log(
+            state["transcription"].call_id,
+            AuditAction.FLAGGED,
+            details={
+                "filename": state["audio_input"].filename,
+                "critical_compliance_flag_count": len(critical_severity_flags),
+            },
+        )
+
     return {"status": CallStatus.FLAGGED_FOR_REVIEW}
 
 
