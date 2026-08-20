@@ -35,7 +35,8 @@ from src.graph.edges import (
     route_after_qa,
     route_after_transcription,
 )
-from src.graph.state import CallStatus, PipelineState
+from src.graph.state import AuditAction, CallStatus, PipelineState
+from src.security.audit import AuditLogger
 from src.security.injection_detector import detect_injection
 from src.security.pii_redactor import detect_and_redact_pii
 from src.utils.config import Config, get_logger
@@ -45,7 +46,20 @@ logger = get_logger(__name__)
 
 def intake_step(state: PipelineState) -> dict:
     """Stage 1 — validate the upload before anything expensive runs."""
-    result = run_intake(state["audio_input"])
+    audio_input = state["audio_input"]
+    result = run_intake(audio_input)
+    audio_properties = result.audio_properties
+    pii_scan_result = result.pii_scan
+    audit_details = {
+        "filename": audio_input.filename,
+        "format": audio_properties.format,
+        "duration_seconds": audio_properties.duration_seconds,
+        "size_bytes": audio_properties.size_bytes,
+        "metadata_pii_types": pii_scan_result.pii_types,
+        "metadata_pii_count": pii_scan_result.pii_count,
+    }
+    AuditLogger().log(result.call_id, AuditAction.STARTED, details=audit_details)
+
     return {"intake": result}
 
 
@@ -75,6 +89,16 @@ def injection_check_node(state: PipelineState) -> dict:
     retval = {"injection_scan": result}
     if result.injection_detected:
         retval["status"] = CallStatus.FLAGGED_FOR_REVIEW
+        AuditLogger().log(
+            state["transcription"].call_id,
+            AuditAction.FLAGGED,
+            details={
+                "filename": state["audio_input"].filename,
+                "injection_detected": result.injection_detected,
+                "patterns_matched": result.patterns_matched,
+            },
+        )
+
     return retval
 
 
@@ -125,6 +149,16 @@ def error_node(state: PipelineState) -> dict:
 
     Reached from route_after_intake when validation failed.
     """
+    intake = state.get("intake")
+    if intake is None:
+        logger.error("error_node reached with no intake in state")
+        return {"status": CallStatus.FAILED}
+
+    AuditLogger().log(
+        state["intake"].call_id,
+        AuditAction.FAILED,
+        details={"filename": state["audio_input"].filename, "error": intake.validation_error},
+    )
     return {"status": CallStatus.FAILED}
 
 
@@ -149,6 +183,20 @@ def report_node(state: PipelineState) -> dict:
         processed_at=datetime.now(UTC),
     )
     persist_report(result)
+
+    AuditLogger().log(
+        state["transcription"].call_id,
+        AuditAction.COMPLETED,
+        details={
+            "filename": state["audio_input"].filename,
+            "pii_detected": state["pii_redactor_scan"].pii_detected,
+            "pii_types": state["pii_redactor_scan"].pii_types,
+            "pii_count": state["pii_redactor_scan"].pii_count,
+            "overall_score": state["qa_scores"].overall_score,
+            "compliance_flags_count": len(state["qa_scores"].compliance_flags),
+        },
+    )
+
     return {"report": result, "status": CallStatus.COMPLETED}
 
 
