@@ -5,14 +5,20 @@ Everything above this module is presentation; everything below it is the
 pipeline. process_call() is the only function the UI calls.
 """
 
+import os
+import tempfile
+from collections import deque
 from pathlib import Path
 from typing import NamedTuple
 
 from langgraph.graph.state import CompiledStateGraph
 
+from src.agents.report import generate_report_json
 from src.graph.state import AudioInput, CallStatus
-from src.utils.config import Config
+from src.utils.config import Config, get_logger
 from src.utils.formatters import format_qa, format_summary, format_transcript_for_display
+
+logger = get_logger(__name__)
 
 REJECTED = "This file could not be analysed."
 
@@ -23,12 +29,28 @@ to the language model.
 
 **Patterns matched:** {patterns}"""
 
+_TEMP_FILES = deque()
+_TEMP_FILE_CAP = 50
+
+
+def _track_temp_file(json_path: Path) -> None:
+    _TEMP_FILES.append(json_path)
+    while len(_TEMP_FILES) > _TEMP_FILE_CAP:
+        old = _TEMP_FILES.popleft()
+        try:
+            os.unlink(old)
+        except FileNotFoundError:
+            logger.debug("Could not remove %s as it was not found", old)
+        except OSError as e:
+            logger.error("Could not remove %s: %s", old, e)
+
 
 class PipelineResult(NamedTuple):
     status: CallStatus
     transcript: str
     summary: str
     qa: str
+    json_path: Path | None
 
 
 def process_call(
@@ -83,6 +105,7 @@ def process_call(
             transcript=result["intake"].validation_error or REJECTED,
             summary="",
             qa="",
+            json_path=None,
             status=status,
         )
 
@@ -99,12 +122,19 @@ def process_call(
             transcript=transcript,
             summary=BLOCKED.format(patterns=matched),
             qa="",
+            json_path=None,
             status=status,
         )
+
+    report = result["report"]
+    json_path = Path(tempfile.gettempdir()) / f"callsense-{report.call_id}.json"
+    json_path.write_text(generate_report_json(report))
+    _track_temp_file(json_path)
 
     return PipelineResult(
         transcript=transcript,
         summary=format_summary(result["summary"]),
         qa=format_qa(result["qa_scores"]),
+        json_path=json_path,
         status=status,
     )

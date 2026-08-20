@@ -109,3 +109,7 @@ def persist_report(report: CallReport, engine: Engine | None = None) -> None:
                 trace_id=report.trace_id,
             )
         )
+
+
+def generate_report_json(report: CallReport) -> str:
+    return report.model_dump_json(indent=2)

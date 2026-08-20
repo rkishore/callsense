@@ -30,6 +30,8 @@ def build_analyze_tab(graph: CompiledStateGraph, config: Config):
             summary_md = gr.Markdown(label="Summary")
             qa_md = gr.Markdown(label="QA Scorecard")
 
+        json_file = gr.File(label="Report in JSON")
+
         def analyze(audio_path, caller, dept):
             if not audio_path:
                 raise gr.Error("Please upload a recording first.")
@@ -37,8 +39,11 @@ def build_analyze_tab(graph: CompiledStateGraph, config: Config):
                 result = process_call(audio_path, graph, config, caller or None, dept or None)
             except Exception as exc:
                 raise gr.Error(f"Could not analyze this recording: {exc}") from exc
-            return result.transcript, result.summary, result.qa
+            json_path = str(result.json_path) if result.json_path else None
+            return result.transcript, result.summary, result.qa, json_path
 
         btn.click(show_status, outputs=[status, btn]).then(
-            analyze, inputs=[audio, caller_id, department], outputs=[transcript, summary_md, qa_md]
+            analyze,
+            inputs=[audio, caller_id, department],
+            outputs=[transcript, summary_md, qa_md, json_file],
         ).then(hide_status, outputs=[status, btn])
