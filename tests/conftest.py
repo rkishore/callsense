@@ -139,6 +139,36 @@ def oversized_bytes() -> bytes:
 
 
 @pytest.fixture(autouse=True)
+def hermetic_environment(monkeypatch, tmp_path):
+    """Give every test a complete, disposable environment.
+
+    Several code paths call load_config() internally rather than taking an
+    injected Config — transcription_node calls run_transcription(state["intake"])
+    with no config, for instance, which is correct in production where .env
+    exists. On a machine without one, eight tests failed with ConfigError, and a
+    clean clone is exactly what a reviewer runs.
+
+    They passed here only because the developer's own .env happened to be
+    present, which also meant the suite behaved differently depending on which
+    provider that .env named. Setting the values makes the suite hermetic in
+    both directions.
+
+    DB_PATH points at tmp_path for the same reason. Anything falling back to the
+    process-wide engine then writes to a database thrown away after the test —
+    the integration suite previously put 21 rows of its own failures into the
+    real data/calls.db that way.
+
+    monkeypatch restores the prior environment afterwards, so this leaks nothing
+    into the shell that ran pytest.
+    """
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "test-fallback.db"))
+
+
+@pytest.fixture(autouse=True)
 def reset_engine_singleton():
     """Clear the engine singleton around every test in the suite.
 
