@@ -2,11 +2,19 @@
 
 VENV := .venv
 PY   := $(VENV)/bin/python
-PIP  := uv pip
 
-install:  ## Install the project with dev extras and register pre-commit hooks
-	$(PIP) install -e ".[dev]"
-	$(VENV)/bin/pre-commit install
+# The interpreter used to create the venv. The project needs 3.11+, and stock
+# macOS still ships 3.9 as python3 — override on the command line if the default
+# is too old:  make install PYTHON=python3.12
+PYTHON ?= python3
+
+install:  ## Create the venv, install with dev extras, register hooks
+	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+	$(PY) -m pip install --quiet --upgrade pip
+	$(PY) -m pip install --quiet -e ".[dev]"
+# Hooks are for contributors and need a git repo. A reviewer working from the
+# submitted zip has no .git, so this must not fail the install.
+	-$(VENV)/bin/pre-commit install
 
 test:  ## Unit + security suites (fast, no API keys, no real audio)
 	$(PY) -m pytest tests/unit tests/security -v

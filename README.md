@@ -72,8 +72,15 @@ Python 3.11+ and `ffmpeg` on the PATH.
 
 ```bash
 brew install ffmpeg        # or apt-get install ffmpeg
-make install               # dependencies + pre-commit hooks
+make install               # creates .venv, installs everything
 cp .env.example .env
+```
+
+`make install` creates the virtualenv itself. If your default `python3` is older
+than 3.11 — stock macOS still ships 3.9 — point it at a newer one:
+
+```bash
+make install PYTHON=python3.12
 ```
 
 Then set **one** provider key in `.env` — `OPENAI_API_KEY`, `GOOGLE_API_KEY` or `GROQ_API_KEY` —
@@ -102,6 +109,12 @@ make test              # unit + security — no API keys, no audio files, second
 make test-integration  # end-to-end through the compiled graph
 make test-all          # everything
 make lint              # ruff
+```
+
+Or directly, if you have the virtualenv activated:
+
+```bash
+pytest tests/ -v
 ```
 
 166 tests. **The suite needs no API keys and no real audio**: WAV bytes are generated in-process,
