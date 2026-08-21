@@ -27,7 +27,7 @@ from tests.conftest import (
 )
 
 
-def test_invalid_audio_returns_failed_status(db_engine):
+def test_invalid_audio_returns_failed_status(tmp_path):
     """Unanalysable audio is rejected at intake and routed straight to error.
 
     The two absence assertions are doing the real work. status == FAILED alone
@@ -45,6 +45,12 @@ def test_invalid_audio_returns_failed_status(db_engine):
     b"not audio" fails the length gate — "File is too small to determine format"
     — rather than the magic-byte check. b"\x00" * 2000 would exercise the
     unsupported-format path instead; both are valid rejections.
+
+    db_path is set on the Config and the singleton seeded from it, rather than
+    taking the db_engine fixture. Nodes call AuditLogger() with no engine, so
+    session_scope falls back to the process-wide one — an engine the pipeline
+    never sees leaves the audit writes going to whatever DB_PATH says, which
+    put 21 rows of this test's own failures into the real database.
     """
     audio_input = AudioInput(audio_data=b"not audio", filename="call.wav")
     config = Config(
@@ -52,7 +58,11 @@ def test_invalid_audio_returns_failed_status(db_engine):
         openai_api_key="sk-test",
         confidence_threshold=0.6,
         low_confidence_halt_ratio=0.8,
+        db_path=str(tmp_path / "pipeline.db"),
     )
+
+    db_engine = connection.get_engine(config)
+    connection.init_db(db_engine)
 
     graph = compile_workflow(config, db_engine)
     result = graph.invoke({"audio_input": audio_input})
