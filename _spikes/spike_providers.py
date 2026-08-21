@@ -5,12 +5,16 @@ Makes real API calls.
 
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, "/Users/kishore.iyer/Code/ik/agentic-ai/callsense")
+# Spikes live one directory below the repo root, and are run from anywhere:
+#   .venv/bin/python _spikes/<this file>
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
 
-from src.graph.state import QAScoreResult
-from src.utils.config import VALID_PROVIDERS
-from src.utils.llm_factory import get_llm
+from src.graph.state import QAScoreResult  # noqa: E402
+from src.utils.config import VALID_PROVIDERS  # noqa: E402
+from src.utils.llm_factory import get_llm  # noqa: E402
 
 if __name__ == "__main__":
     TRANSCRIPT = """[00:03] Agent: Thanks for calling Metro Bank, this is Dana.
