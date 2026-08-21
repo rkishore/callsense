@@ -5,7 +5,7 @@ quality score and a compliance report — with prompt-injection detection and PI
 *before* any of it reaches a language model.
 
 Seven pipeline stages orchestrated by a LangGraph state machine, running Whisper locally and any of
-three LLM providers behind one interface. 166 tests, no API keys needed to run them.
+three LLM providers behind one interface. 169 tests, no API keys needed to run them.
 
 ```bash
 make install && cp .env.example .env    # add one provider key
@@ -84,7 +84,11 @@ make install PYTHON=python3.12
 ```
 
 Then set **one** provider key in `.env` — `OPENAI_API_KEY`, `GOOGLE_API_KEY` or `GROQ_API_KEY` —
-and `LLM_PROVIDER` to match. Every variable is documented inline in `.env.example`.
+and `LLM_PROVIDER` to match. That is the only key the application requires; every variable is
+documented inline in `.env.example`.
+
+`LANGSMITH_API_KEY` is **optional**. Without it the pipeline runs normally and the Observability tab
+reports tracing as disabled. Set `LANGSMITH_TRACING=true` alongside the key to send traces.
 
 Whisper weights download on first run and are cached by `faster-whisper`; nothing needs fetching
 manually.
@@ -117,7 +121,7 @@ Or directly, if you have the virtualenv activated:
 pytest tests/ -v
 ```
 
-166 tests. **The suite needs no API keys and no real audio**: WAV bytes are generated in-process,
+169 tests. **The suite needs no API keys and no real audio**: WAV bytes are generated in-process,
 Whisper is mocked, and both LLM calls are patched per importing module.
 
 Three tests worth knowing about:
