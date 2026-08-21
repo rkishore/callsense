@@ -29,6 +29,15 @@ to the language model.
 
 **Patterns matched:** {patterns}"""
 
+WITHHELD = """### Held for supervisor review
+
+A critical compliance violation was flagged, so this call needs a human before
+it is signed off. The full analysis is below.
+
+---
+
+"""
+
 _TEMP_FILES = deque()
 _TEMP_FILE_CAP = 50
 
@@ -122,6 +131,16 @@ def process_call(
             transcript=transcript,
             summary=BLOCKED.format(patterns=matched),
             qa="",
+            json_path=None,
+            status=status,
+        )
+
+    # "we analysed it and a human must see it"
+    if "report" not in result:
+        return PipelineResult(
+            transcript=transcript,
+            summary=WITHHELD + format_summary(result["summary"]),
+            qa=format_qa(result["qa_scores"]),
             json_path=None,
             status=status,
         )
