@@ -103,16 +103,26 @@ def _format_metrics(
 
 
 def _format_langsmith_status() -> str:
-    """Whether tracing is on, and enough detail to fix it if it is not."""
-    enabled = os.environ.get("LANGCHAIN_TRACING_V2", "").lower() == "true"
-    project = os.environ.get("LANGCHAIN_PROJECT", "default")
+    """Whether tracing is on, and enough detail to fix it if it is not.
+
+    Reads LANGSMITH_* first and falls back to the older LANGCHAIN_* prefix.
+    Current langsmith releases honour both, and .env.example standardises on
+    LANGSMITH_* while the course documentation uses LANGCHAIN_*. Checking only
+    one meant the dashboard reported tracing disabled while it was running.
+    """
+    enabled = (
+        os.environ.get("LANGSMITH_TRACING") or os.environ.get("LANGCHAIN_TRACING_V2") or ""
+    ).lower() == "true"
+    project = (
+        os.environ.get("LANGSMITH_PROJECT") or os.environ.get("LANGCHAIN_PROJECT") or "default"
+    )
 
     if enabled:
         return f"### LangSmith\n\n🟢 Tracing enabled — project `{project}`."
 
     return (
         "### LangSmith\n\n⚪ Tracing disabled. "
-        "Set `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` to enable."
+        "Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` to enable."
     )
 
 
