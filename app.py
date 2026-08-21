@@ -12,6 +12,7 @@ from src.agents.transcription import _get_whisper_model
 from src.database.connection import get_engine, init_db
 from src.graph.workflow import compile_workflow
 from src.ui.tabs.analyze import build_analyze_tab
+from src.ui.tabs.observability import build_observability_tab
 from src.utils.config import Config, get_logger, load_config
 
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ def build_app(graph, config: Config) -> gr.Blocks:
     with gr.Blocks(title="callsense") as demo:
         gr.Markdown("# callsense\nCall centre intelligence — transcript, summary and QA scoring.")
         build_analyze_tab(graph, config)
+        build_observability_tab()
     return demo
 
 
