@@ -76,8 +76,9 @@ make install               # creates .venv, installs everything
 cp .env.example .env
 ```
 
-`make install` creates the virtualenv itself. If your default `python3` is older
-than 3.11 — stock macOS still ships 3.9 — point it at a newer one:
+`make install` creates the virtualenv itself and picks the first Python 3.11+ it can find, so a
+default `python3` that is too old — stock macOS still ships 3.9 — is handled rather than fatal. To
+pin a particular build:
 
 ```bash
 make install PYTHON=python3.12
@@ -231,7 +232,7 @@ All in `.env`, all documented in `.env.example`. The ones that change behaviour 
 
 **Locally**: `make run`.
 
-**Container**:
+**Container**: `make docker-run` builds the image and serves it, or by hand:
 
 ```bash
 docker build -t callsense .
