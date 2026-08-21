@@ -15,6 +15,7 @@ from src.graph.state import (
     SeverityLevel,
 )
 from src.graph.workflow import compile_workflow
+from src.services.pipeline import process_call
 from src.utils.config import Config
 from tests.conftest import (
     fake_info,
@@ -227,3 +228,67 @@ def test_injection_in_audio_flagged(tmp_path):
     mock_qa_llm.assert_not_called()
     assert "summary" not in result
     assert "ignore_previous" in result["injection_scan"].patterns_matched
+
+
+def test_withheld_call_keeps_its_analysis(tmp_path):
+    """A call held for supervisor review still shows everything it produced.
+
+    Goes through process_call rather than graph.invoke, which is the gap that
+    let this path crash: it has transcription and qa_scores but no report, so it
+    fell past both earlier guards into the completed branch and raised
+    KeyError on result["report"]. Every other test here invokes the graph
+    directly and would not have seen it.
+
+    The assertions guard both failure modes. Non-empty summary and qa catch a
+    regression to the empty strings the first fix returned — this call was
+    analysed successfully and *then* withheld, and the scorecard is precisely
+    what tells a reviewer why a human was called in. json_path is None because
+    no report was compiled, so there is nothing to download.
+
+    Contrast with the injection case: that one genuinely has no analysis, and
+    empty is honest there. Same status, opposite meaning — the third bug caused
+    by treating FLAGGED_FOR_REVIEW as one thing.
+    """
+    audio_input_path = tmp_path / "critical.wav"
+    audio_input_path.write_bytes(make_wav_bytes(duration=2.0, sample_rate=16000))
+
+    config = Config(
+        llm_provider="openai",
+        openai_api_key="sk-test",
+        confidence_threshold=0.6,
+        low_confidence_halt_ratio=0.8,
+        db_path=str(tmp_path / "pipeline.db"),
+    )
+    db_engine = connection.get_engine(config)
+    connection.init_db(db_engine)
+
+    critical_flag = ComplianceFlag(
+        violation_description="Account action taken without identity verification.",
+        severity=SeverityLevel.CRITICAL,
+        transcript_timestamp=25.0,
+    )
+
+    with (
+        mock.patch("src.agents.transcription._get_whisper_model") as mock_whisper,
+        mock.patch("src.agents.summarization.get_llm") as mock_summary_llm,
+        mock.patch("src.agents.qa_scoring.get_llm") as mock_qa_llm,
+    ):
+        mock_whisper.return_value.transcribe.return_value = make_segments_info()
+        mock_summary_llm.return_value.with_structured_output.return_value.invoke.return_value = (
+            make_summary()
+        )
+        mock_qa_llm.return_value.with_structured_output.return_value.invoke.return_value = (
+            make_qa_scores([critical_flag])
+        )
+
+        graph = compile_workflow(config, db_engine)
+        result = process_call(audio_input_path, graph, config)
+
+    assert result.status == CallStatus.FLAGGED_FOR_REVIEW
+    assert result.transcript
+    # The analysis survives — this is not the injection case.
+    assert "Held for supervisor review" in result.summary
+    assert "Call Purpose" in result.summary
+    assert "Overall Score" in result.qa
+    # No report was compiled, so there is nothing to offer as a download.
+    assert result.json_path is None
