@@ -10,11 +10,17 @@ PYTHON ?= python3
 
 install:  ## Create the venv, install with dev extras, register hooks
 	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+# uv-created virtualenvs deliberately ship without pip, so make sure it exists
+# before using it. Harmless where pip is already present.
+	@$(PY) -m ensurepip --upgrade >/dev/null 2>&1 || true
 	$(PY) -m pip install --quiet --upgrade pip
 	$(PY) -m pip install --quiet -e ".[dev]"
 # Hooks are for contributors and need a git repo. A reviewer working from the
-# submitted zip has no .git, so this must not fail the install.
-	-$(VENV)/bin/pre-commit install
+# submitted zip has no .git, so skip rather than fail — and say so, because
+# pre-commit's own error reads like the install broke when it did not.
+	@test -d .git \
+	  && $(VENV)/bin/pre-commit install \
+	  || echo "Skipped pre-commit hooks (not a git repository). Install complete."
 
 test:  ## Unit + security suites (fast, no API keys, no real audio)
 	$(PY) -m pytest tests/unit tests/security -v
