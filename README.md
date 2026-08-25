@@ -239,8 +239,13 @@ docker build -t callsense .
 docker run --env-file .env -p 7860:7860 callsense
 ```
 
-Verified: builds clean and serves on `http://localhost:7860` within about five seconds. The image is
-~2 GB, most of it the CTranslate2 and ONNX runtimes that faster-whisper depends on.
+Verified: builds clean and serves on `http://localhost:7860` within about two seconds. The image is
+~2.1 GB — Gradio accounts for 200 MB of that, the CTranslate2 and ONNX runtimes another 120 MB.
+
+The Whisper weights are baked in at build time rather than fetched on first use. `app.py` warms the
+model singleton at startup, but that warm-up is useless if the weights are not yet on disk — without
+this the first upload pays the download. Build a different size with
+`docker build --build-arg WHISPER_MODEL=base -t callsense .`
 
 `ffmpeg` is installed in the image because faster-whisper shells out to it to decode anything that
 is not already PCM WAV — which is every mp3, m4a and flac the validator accepts.

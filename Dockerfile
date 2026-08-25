@@ -28,6 +28,13 @@ ENV GRADIO_SERVER_NAME=0.0.0.0 \
 # this path to avoid re-downloading on every container start.
 ENV HF_HOME=/app/.cache/huggingface
 
+# Bake the weights into the image rather than fetching them on the first
+# request. app.py warms the model singleton at startup, but that warm-up is
+# useless if the weights are not on disk yet — the first upload pays the
+# download. Costs a layer at build time and removes it from every cold start.
+ARG WHISPER_MODEL=tiny
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('$WHISPER_MODEL')"
+
 # SQLite lives here; mount a volume to keep call records across restarts.
 RUN mkdir -p /app/data
 
