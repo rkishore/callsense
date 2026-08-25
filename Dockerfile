@@ -8,6 +8,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
+# Hugging Face Spaces runs containers as UID 1000, and several platforms do the
+# same. Running as root locally and non-root there would mean the SQLite
+# database and the model cache are unwritable in production only — so create the
+# user here and own the paths from the start.
+RUN useradd --create-home --uid 1000 app
 WORKDIR /app
 
 # Dependencies before source, so editing a .py file does not invalidate the pip
@@ -36,7 +41,9 @@ ARG WHISPER_MODEL=tiny
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('$WHISPER_MODEL')"
 
 # SQLite lives here; mount a volume to keep call records across restarts.
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R app:app /app
+
+USER app
 
 EXPOSE 7860
 
