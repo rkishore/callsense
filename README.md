@@ -68,7 +68,7 @@ The specification names five layers; `security/` and `utils/` are their own, so 
 
 ## Setup
 
-Python 3.11+ and `ffmpeg` on the PATH.
+Python 3.10+ and `ffmpeg` on the PATH.
 
 ```bash
 brew install ffmpeg        # or apt-get install ffmpeg
@@ -76,7 +76,7 @@ make install               # creates .venv, installs everything
 cp .env.example .env
 ```
 
-`make install` creates the virtualenv itself and picks the first Python 3.11+ it can find, so a
+`make install` creates the virtualenv itself and picks the first Python 3.10+ it can find, so a
 default `python3` that is too old — stock macOS still ships 3.9 — is handled rather than fatal. To
 pin a particular build:
 
@@ -399,7 +399,7 @@ problem rather than a validation one.
 
 ## Requirements
 
-Python 3.11+ and `ffmpeg` on the PATH.
+Python 3.10+ and `ffmpeg` on the PATH.
 
 ## Licence
 

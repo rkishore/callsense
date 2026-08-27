@@ -3,19 +3,19 @@
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-# The interpreter used to create the venv. The project needs 3.11+, and stock
+# The interpreter used to create the venv. The project needs 3.10+, and stock
 # macOS still ships 3.9 as python3 — so search for the first one new enough
 # rather than assuming. Override explicitly to pin a particular build:
 #   make install PYTHON=python3.12
 PYTHON ?= $(shell for p in python3 python3.13 python3.12 python3.11; do \
 	  command -v $$p >/dev/null 2>&1 \
-	    && $$p -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null \
+	    && $$p -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null \
 	    && echo $$p && break; \
 	done)
 
 install:  ## Create the venv, install with dev extras, register hooks
 	@test -n "$(PYTHON)" || { \
-	  echo "No Python 3.11+ found. Install one, or point at it directly:"; \
+	  echo "No Python 3.10+ found. Install one, or point at it directly:"; \
 	  echo "    make install PYTHON=/path/to/python3.12"; \
 	  exit 1; \
 	}

@@ -18,7 +18,7 @@ Reading a key that no earlier node set raises KeyError rather than returning
 None, since total=False means optional-and-absent rather than defaulted.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -197,7 +197,7 @@ def report_node(state: PipelineState) -> dict:
         state["summary"],
         state["qa_scores"],
         CallStatus.COMPLETED,
-        processed_at=datetime.now(UTC),
+        processed_at=datetime.now(timezone.utc),
     )
     persist_report(result)
 

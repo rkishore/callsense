@@ -17,7 +17,25 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import StrEnum
+
+try:  # Python 3.11+
+    from enum import StrEnum
+except ImportError:  # Python 3.10 — Hugging Face Spaces' Gradio SDK runs 3.10
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Backport of 3.11's enum.StrEnum.
+
+        The __str__ override is the whole point. A plain `class Foo(str, Enum)`
+        stringifies as "Foo.BAR" on 3.10, where StrEnum gives "bar" — and this
+        codebase relies on the value: resolution_status.title() renders in the
+        summary, and speaker labels are interpolated straight into transcripts.
+        """
+
+        def __str__(self) -> str:
+            return str(self.value)
+
+
 from pathlib import Path
 from typing import NamedTuple, TypedDict
 

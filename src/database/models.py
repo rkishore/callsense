@@ -9,7 +9,7 @@ audio hash and has an N:1 relationship to calls, since the same recording
 analysed twice should transcribe once.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -46,7 +46,7 @@ class AuditLogEntry(Base):
     everything that happened to this call" is the query this table exists to
     answer. That is the opposite of `call_records`, where `call_id` is unique.
 
-    `timestamp` takes a callable default. `default=datetime.now(UTC)` would
+    `timestamp` takes a callable default. `default=datetime.now(timezone.utc)` would
     evaluate once at import and stamp every row ever written with the moment the
     module was loaded — records that look plausible and are uniformly wrong.
     """
@@ -59,7 +59,7 @@ class AuditLogEntry(Base):
     action: Mapped[str] = mapped_column(String(ENUM_LEN))
     user: Mapped[str] = mapped_column(String(USER_LEN))
 
-    timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     # JSON rather than Text: SQLAlchemy serialises on the way in and
     # deserialises on the way out, so callers hand over a dict and read back a
@@ -100,7 +100,7 @@ class TranscriptionCache(Base):
 
     transcription_json: Mapped[str] = mapped_column(Text())
 
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 
 class CallRecord(Base):
@@ -138,5 +138,5 @@ class CallRecord(Base):
     qa_scores_json: Mapped[str] = mapped_column(Text())
     report_json: Mapped[str] = mapped_column(Text())
 
-    processed_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    processed_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     trace_id: Mapped[str | None] = mapped_column(String(UUID_LEN), default=None)
