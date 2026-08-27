@@ -1,0 +1,3 @@
+# apt packages for Hugging Face Spaces. faster-whisper shells out to ffmpeg to
+# decode anything that is not already PCM WAV.
+ffmpeg

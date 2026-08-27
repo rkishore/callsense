@@ -1,4 +1,4 @@
-.PHONY: install test test-integration test-all lint format run demo docker-build docker-run clean
+.PHONY: install test test-integration test-all lint format run demo requirements docker-build docker-run clean
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -54,6 +54,13 @@ run:  ## Start the Gradio app on http://localhost:7860
 
 demo:  ## Start the app configured for recording (see docs/DEMO.md)
 	WHISPER_MODEL_SIZE=base $(PY) app.py
+
+requirements:  ## Regenerate requirements.txt from pyproject.toml
+	@$(PY) -c "import pathlib, tomllib; \
+	d = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']; \
+	h = open('requirements.txt').read().split('\n\n')[0] + '\n\n'; \
+	pathlib.Path('requirements.txt').write_text(h + '\n'.join(d) + '\n')"
+	@echo "requirements.txt regenerated from pyproject.toml"
 
 docker-build:  ## Build the container image
 	docker build -t callsense .

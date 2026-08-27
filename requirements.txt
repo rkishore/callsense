@@ -1,0 +1,39 @@
+# Generated from pyproject.toml's [project] dependencies — pyproject remains the
+# source of truth. This file exists because Hugging Face Spaces' Gradio SDK
+# installs from requirements.txt and does not read pyproject.
+#
+# Regenerate with:  make requirements
+langgraph>=0.4
+langchain>=0.3
+langchain-core>=0.3
+langchain-openai>=0.2
+langchain-google-genai>=2.0
+langchain-groq>=0.2
+langsmith>=0.1
+faster-whisper>=1.0
+mutagen>=1.47
+soundfile>=0.12
+numpy>=1.26
+pydantic>=2.7
+sqlalchemy>=2.0
+reportlab>=4.1
+gradio>=5.0,<6.0
+python-dotenv>=1.0
+
+
+langgraph>=0.4
+langchain>=0.3
+langchain-core>=0.3
+langchain-openai>=0.2
+langchain-google-genai>=2.0
+langchain-groq>=0.2
+langsmith>=0.1
+faster-whisper>=1.0
+mutagen>=1.47
+soundfile>=0.12
+numpy>=1.26
+pydantic>=2.7
+sqlalchemy>=2.0
+reportlab>=4.1
+gradio>=5.0,<6.0
+python-dotenv>=1.0

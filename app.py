@@ -42,9 +42,10 @@ def main() -> None:
     # Loopback locally; containers and Spaces override it — see the Dockerfile.
     default_host = "0.0.0.0" if os.environ.get("SPACE_ID") else "127.0.0.1"  # noqa: S104
     server_name = os.environ.get("GRADIO_SERVER_NAME", default_host)
-    logger.info("Starting Gradio on %s:7860", server_name)
+    server_port = int(os.environ.get("GRADIO_SERVER_PORT", 7860))
+    logger.info("Starting Gradio on %s:%d", server_name, server_port)
 
-    build_app(graph, config).launch(server_name=server_name, server_port=7860)
+    build_app(graph, config).launch(server_name=server_name, server_port=server_port)
 
 
 if __name__ == "__main__":
