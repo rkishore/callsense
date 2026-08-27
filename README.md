@@ -400,3 +400,10 @@ problem rather than a validation one.
 ## Requirements
 
 Python 3.11+ and `ffmpeg` on the PATH.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+The implementation is mine; the problem specification it was built against belongs to Interview
+Kickstart and is deliberately not included in this repository.
