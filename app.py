@@ -1,7 +1,7 @@
-"""Entrypoint. Startup wiring only: schema, Whisper warm-up, graph compile, launch.
+"""Entrypoint. Startup wiring: schema, Whisper warm-up, graph compile, launch.
 
-The Whisper load happens here rather than per request: it costs 5-30 seconds, and
-paying it inside the first upload makes a working system look broken.
+Whisper loads here rather than per request: it costs 5-30 seconds, and paying
+that inside the first upload makes a working system look broken.
 """
 
 import os
@@ -29,23 +29,20 @@ def build_app(graph, config: Config) -> gr.Blocks:
 
 def main() -> None:
     config = load_config()
-
     engine = get_engine(config)
     init_db(engine)
     logger.info("Database ready at %s", config.db_path)
-
     logger.info("Loading Whisper model size=%s", config.whisper_model_size)
     _get_whisper_model(config.whisper_model_size)
-
     graph = compile_workflow(config, engine)
-
-    # Loopback locally; containers and Spaces override it — see the Dockerfile.
-    default_host = "0.0.0.0" if os.environ.get("SPACE_ID") else "127.0.0.1"  # noqa: S104
-    server_name = os.environ.get("GRADIO_SERVER_NAME", default_host)
+    # Loopback locally; containers and Spaces override both — see the Dockerfile.
+    host = "0.0.0.0" if os.environ.get("SPACE_ID") else "127.0.0.1"  # noqa: S104
+    server_name = os.environ.get("GRADIO_SERVER_NAME", host)
     server_port = int(os.environ.get("GRADIO_SERVER_PORT", 7860))
     logger.info("Starting Gradio on %s:%d", server_name, server_port)
-
-    build_app(graph, config).launch(server_name=server_name, server_port=server_port)
+    # ssr_mode=False: Gradio 5's SSR spawns a Node process alongside Python.
+    app = build_app(graph, config)
+    app.launch(server_name=server_name, server_port=server_port, ssr_mode=False)
 
 
 if __name__ == "__main__":
