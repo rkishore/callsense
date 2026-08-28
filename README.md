@@ -272,7 +272,8 @@ would be slower, not faster. On CPU the throughput measured here is roughly 74×
 `tiny`: fifty-five minutes of audio transcribed in forty-five seconds.
 
 **HuggingFace Spaces**: `SPACE_ID` is set there, which the entrypoint treats the same way. No code
-change needed.
+change needed — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for what a Spaces deployment requires
+and what the free tier does not cover.
 
 ## Design decisions worth defending
 
