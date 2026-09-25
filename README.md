@@ -405,6 +405,3 @@ Python 3.10+ and `ffmpeg` on the PATH.
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
-
-The implementation is mine; the problem specification it was built against belongs to Interview
-Kickstart and is deliberately not included in this repository.
