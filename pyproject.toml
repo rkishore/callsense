@@ -39,7 +39,12 @@ dependencies = [
     "gradio>=5.0,<6.0",
     # config
     "python-dotenv>=1.0",
+    # mcp server — 2.x, where FastMCP became MCPServer
+    "mcp>=2.3,<3",
 ]
+
+[project.scripts]
+callsense-mcp = "src.mcp_server.server:main"
 
 [project.optional-dependencies]
 dev = [

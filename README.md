@@ -5,7 +5,7 @@ quality score and a compliance report — with prompt-injection detection and PI
 *before* any of it reaches a language model.
 
 Seven pipeline stages orchestrated by a LangGraph state machine, running Whisper locally and any of
-three LLM providers behind one interface. 169 tests, no API keys needed to run them.
+three LLM providers behind one interface. 179 tests, no API keys needed to run them.
 
 ```bash
 make install && cp .env.example .env    # add one provider key
@@ -107,6 +107,17 @@ PII at intake.
 `data/demo/` carries two short files that exercise the security stages: `card.mp3` for redaction and
 `injection.mp3` for the injection guard.
 
+### MCP server
+
+An MCP server over stdio exposes the input guards as a tool. `scan_text` runs injection detection
+and PII redaction on any text, with no Whisper, no LLM and no API key. Register it with Claude Code:
+
+```bash
+claude mcp add callsense -- "$PWD/.venv/bin/callsense-mcp"
+```
+
+Scope, the planned tools and the Jev integration are in [docs/mcp-scope.md](docs/mcp-scope.md).
+
 ## Testing
 
 ```bash
@@ -122,7 +133,7 @@ Or directly, if you have the virtualenv activated:
 pytest tests/ -v
 ```
 
-169 tests. **The suite needs no API keys and no real audio**: WAV bytes are generated in-process,
+179 tests. **The suite needs no API keys and no real audio**: WAV bytes are generated in-process,
 Whisper is mocked, and both LLM calls are patched per importing module.
 
 Three tests worth knowing about:

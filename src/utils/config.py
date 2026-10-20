@@ -14,10 +14,15 @@ from dotenv import find_dotenv, load_dotenv
 
 # ── Logger ───────────────────────────────────────────────────
 def get_logger(name: str) -> logging.Logger:
-    """Create a module-level logger with a readable format."""
+    """Create a module-level logger with a readable format.
+
+    Writes to stderr, never stdout. Under the MCP server's stdio transport,
+    stdout *is* the JSON-RPC channel, so one log line there corrupts the
+    protocol stream. stderr is also where logging writes by default.
+    """
     logger = logging.getLogger(name)
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(
             logging.Formatter(
                 "%(asctime)s | %(name)-18s | %(levelname)-7s | %(message)s", datefmt="%H:%M:%S"
