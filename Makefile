@@ -58,7 +58,7 @@ demo:  ## Start the app configured for recording (see docs/DEMO.md)
 requirements:  ## Regenerate requirements.txt from pyproject.toml
 	@$(PY) -c "import pathlib, tomllib; \
 	d = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']; \
-	h = open('requirements.txt').read().split('\n\n')[0] + '\n\n'; \
+	h = ''.join(l for l in open('requirements.txt').readlines() if l.startswith('#')); \
 	pathlib.Path('requirements.txt').write_text(h + '\n'.join(d) + '\n')"
 	@echo "requirements.txt regenerated from pyproject.toml"
 
