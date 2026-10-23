@@ -11,6 +11,7 @@ langchain-google-genai>=2.0
 langchain-groq>=0.2
 langsmith>=0.1
 faster-whisper>=1.0
+av<19
 mutagen>=1.47
 soundfile>=0.12
 numpy>=1.26

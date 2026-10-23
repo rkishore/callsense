@@ -24,6 +24,9 @@ dependencies = [
     "langsmith>=0.1",
     # speech-to-text
     "faster-whisper>=1.0",
+    # av 19 dropped open()'s metadata_errors argument, which faster-whisper 1.2.1
+    # still passes, so every transcription raises TypeError. Lift once it is fixed.
+    "av<19",
     # audio metadata for non-WAV formats
     "mutagen>=1.47",
     "soundfile>=0.12",
