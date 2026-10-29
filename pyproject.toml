@@ -55,6 +55,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "pre-commit>=3.7",
+    # Only the Jev spike imports it so far. Moves to dependencies when
+    # scan_text calls Jev, so the Space never installs what it cannot use.
+    "typesafe-sdk>=0.7.5",
 ]
 
 [tool.hatch.build.targets.wheel]
