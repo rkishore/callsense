@@ -1,7 +1,8 @@
 """
 Unit tests for the scan_text eval runner in evals/scan_text/run.py.
 
-Only the parts every score depends on: loading the cases and splitting them.
+Only the parts every score depends on: loading the cases, splitting them, and
+running one without letting a failure end the run.
 """
 
 import os
@@ -11,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from evals.scan_text.run import load_cases, split_of
+from evals.scan_text import run
+from evals.scan_text.run import Case, load_cases, run_case, split_of
 
 REPO = Path(__file__).resolve().parents[2]
 CASES = REPO / "evals" / "scan_text" / "cases.jsonl"
@@ -66,3 +68,20 @@ def test_split_is_the_same_under_different_hash_seeds():
         ).stdout
 
     assert splits("1") == splits("2")
+
+
+def test_a_failing_scan_becomes_an_error_row(monkeypatch):
+    # The row must keep its shape, so the scorer never checks for missing keys.
+    case = Case.model_validate_json(ROW)
+    ok = run_case(case, repeat=0)
+
+    def boom(text):
+        raise TimeoutError("jev took too long")
+
+    # Patched where run_case looks it up, not in server.py.
+    monkeypatch.setattr(run, "scan_text", boom)
+    failed = run_case(case, repeat=0)
+
+    assert failed.keys() == ok.keys()
+    assert failed["verdict"] is None
+    assert failed["error"] == "TimeoutError: jev took too long"
