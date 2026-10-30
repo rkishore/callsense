@@ -98,6 +98,20 @@ def format_rate(counts: dict) -> str:
     return f"{counts['positives']}/{counts['rows']} = {shown}"
 
 
+def describe_jev(meta: dict) -> str:
+    """How Jev took part in the run, for the report's header."""
+    enabled = meta.get("jev_enabled")
+    if enabled is None:
+        # Files written before run.py recorded it, e.g. the regex-only baseline.
+        return "not recorded"
+    if not enabled:
+        return "off (regex-only)"
+    return (
+        f"{meta['jev_model']}  question {meta['question_version']}  "
+        f"tau_review {meta['tau_review']}  tau_block {meta['tau_block']}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Score a scan_text results file and print the report to stdout."
@@ -114,7 +128,7 @@ def main():
         f"code     {meta['git_sha']}" + ("  DIRTY: not reproducible" if meta["git_dirty"] else "")
     )
     print(f"cases    sha256 {meta['cases_sha256'][:12]}  rule {meta['rule_version']}")
-    print(f"jev      {meta['jev_model']}  question {meta['question_version']}")
+    print(f"jev      {describe_jev(meta)}")
     print()
 
     counts = result["counts"]

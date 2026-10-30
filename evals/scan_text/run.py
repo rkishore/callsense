@@ -10,8 +10,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from src.mcp_server import server
 from src.mcp_server.jev import INJECTION_QUESTION_VERSION, JEV_MODEL
-from src.mcp_server.server import scan_text
+from src.mcp_server.server import TAU_BLOCK, TAU_REVIEW, scan_text
 
 HERE = Path(__file__).parent
 CASES = HERE / "cases.jsonl"
@@ -145,7 +146,7 @@ def git_state() -> tuple[str, bool]:
     return git("rev-parse", "--short", "HEAD"), bool(git("status", "--porcelain", "-uno"))
 
 
-def run_metadata(cases_path: Path, split: str, repeats: int) -> dict:
+def run_metadata(cases_path: Path, split: str, repeats: int, jev_enabled: bool) -> dict:
     """Facts about the whole run, written once as the first line of the results file."""
     sha, dirty = git_state()
     return {
@@ -154,8 +155,12 @@ def run_metadata(cases_path: Path, split: str, repeats: int) -> dict:
         "git_dirty": dirty,
         "cases_sha256": hashlib.sha256(cases_path.read_bytes()).hexdigest(),
         "rule_version": RULE_VERSION,
+        # Recorded either way, but they describe the run only when jev_enabled.
+        "jev_enabled": jev_enabled,
         "jev_model": JEV_MODEL,
         "question_version": INJECTION_QUESTION_VERSION,
+        "tau_review": TAU_REVIEW,
+        "tau_block": TAU_BLOCK,
         "split": split,
         "repeats": repeats,
     }
@@ -179,7 +184,20 @@ def main():
 
     parser.add_argument("--repeats", type=int, default=1, help="Number of repeat runs")
 
+    parser.add_argument(
+        "--no-jev",
+        action="store_true",
+        help="Run regex-only, as the baseline was, even when TYPESAFE_API_KEY is set",
+    )
+
     args = parser.parse_args()
+
+    # Jev is on unless asked off, and a run that expected it but found no key
+    # stops here. Otherwise it would quietly run regex-only under Jev's name.
+    if args.no_jev:
+        server.get_jev_client = lambda: None
+    elif server.get_jev_client() is None:
+        parser.error("TYPESAFE_API_KEY is not set. Set it in .env, or pass --no-jev.")
 
     print(f"Processing {args.cases}...", file=sys.stderr)
 
@@ -192,7 +210,7 @@ def main():
     ]
 
     # Metadata first: started_at should be when the run began, not when it ended.
-    meta = run_metadata(args.cases, args.split, args.repeats)
+    meta = run_metadata(args.cases, args.split, args.repeats, jev_enabled=not args.no_jev)
 
     # Run cases
     rows = [run_case(case, repeat) for case in sample_cases for repeat in range(args.repeats)]
