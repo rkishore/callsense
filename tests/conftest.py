@@ -166,6 +166,24 @@ def hermetic_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test-fallback.db"))
+    # Blank, not unset: load_dotenv never overrides a variable that is already
+    # set, so the real key in .env cannot come back. Subprocesses inherit this,
+    # which is what keeps the stdio server tests regex-only too.
+    monkeypatch.setenv("TYPESAFE_API_KEY", "")
+
+
+@pytest.fixture(autouse=True)
+def no_real_jev(monkeypatch):
+    """No test reaches the real Jev API, whatever the environment holds.
+
+    The blank TYPESAFE_API_KEY above already gives no client, but get_jev_client
+    is cached for the process, so one real client made anywhere would serve
+    every later test. Replacing the function closes that. A test that needs Jev
+    patches it again, with a fake client.
+    """
+    from src.mcp_server import server
+
+    monkeypatch.setattr(server, "get_jev_client", lambda: None)
 
 
 @pytest.fixture(autouse=True)

@@ -44,6 +44,9 @@ dependencies = [
     "python-dotenv>=1.0",
     # mcp server — 2.x, where FastMCP became MCPServer
     "mcp>=2.3,<3",
+    # Jev, scan_text's second injection check. The server imports it at startup,
+    # so an install without it could not start the server at all.
+    "typesafe-sdk>=0.7.5",
 ]
 
 [project.scripts]
@@ -55,9 +58,6 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "pre-commit>=3.7",
-    # Only the Jev spike imports it so far. Moves to dependencies when
-    # scan_text calls Jev, so the Space never installs what it cannot use.
-    "typesafe-sdk>=0.7.5",
 ]
 
 [tool.hatch.build.targets.wheel]
