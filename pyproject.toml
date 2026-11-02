@@ -85,3 +85,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # decisions they drove. Wide print lines are the point; undefined names and
 # unused imports are still worth catching.
 "_spikes/*" = ["E501", "B007"]
+# Kept as it ran, so the record matches the results beside it. Formatted by
+# ruff; its lint findings are style only.
+"evals/public/pilot/*" = ["E501", "SIM115"]
