@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import hashlib
 import json
 import logging
@@ -11,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from src.mcp_server import server
+from src.mcp_server import jev, server
 from src.mcp_server.jev import INJECTION_QUESTION_VERSION, JEV_MODEL
 from src.mcp_server.server import TAU_BLOCK, TAU_REVIEW, scan_text
 
@@ -99,11 +100,16 @@ def split_of(case_id: str) -> Literal["dev", "test"]:
     return "dev" if bucket < DEV_PERCENT else "test"
 
 
-def run_case(case: Case, repeat: int) -> dict:
+def run_case(case: Case, repeat: int, jev_on_regex_hits: bool = False) -> dict:
     """Run scan_text on one case and record what happened.
 
     Never raises: a failure becomes the row's error, so one bad case cannot end a run.
     Whether the verdict is right is for the scorer to decide, not this function.
+
+    jev_on_regex_hits is an experiment, not a change to scan_text: when the regex
+    blocked, Jev is asked anyway and its score kept in jev_p_shadow, so the
+    "regex blocks first" ordering can be compared with "Jev decides". The verdict
+    is still scan_text's.
     """
     result = {
         "id": case.id,
@@ -113,6 +119,7 @@ def run_case(case: Case, repeat: int) -> dict:
         "verdict": None,
         "patterns_matched": None,
         "jev_p": None,
+        "jev_p_shadow": None,
         "latency_ms": None,
         "error": None,
     }
@@ -128,6 +135,15 @@ def run_case(case: Case, repeat: int) -> dict:
         result["jev_p"] = scan_text_result.injection.jev_p
 
     result["latency_ms"] = round((time.perf_counter() - start) * 1000, 2)
+
+    # After the timing, so latency stays scan_text's alone. Same redacted text
+    # scan_text would have sent. A failure leaves the shadow score null rather
+    # than marking the row an error: the verdict it records did not fail.
+    if jev_on_regex_hits and result["patterns_matched"]:
+        with contextlib.suppress(Exception):
+            result["jev_p_shadow"] = jev.ask_jev(
+                server.get_jev_client(), scan_text_result.pii.redacted_text
+            )
 
     return result
 
@@ -147,7 +163,9 @@ def git_state() -> tuple[str, bool]:
     return git("rev-parse", "--short", "HEAD"), bool(git("status", "--porcelain", "-uno"))
 
 
-def run_metadata(cases_path: Path, split: str, repeats: int, jev_enabled: bool) -> dict:
+def run_metadata(
+    cases_path: Path, split: str, repeats: int, jev_enabled: bool, jev_on_regex_hits: bool
+) -> dict:
     """Facts about the whole run, written once as the first line of the results file."""
     sha, dirty = git_state()
     return {
@@ -158,6 +176,7 @@ def run_metadata(cases_path: Path, split: str, repeats: int, jev_enabled: bool) 
         "rule_version": RULE_VERSION,
         # Recorded either way, but they describe the run only when jev_enabled.
         "jev_enabled": jev_enabled,
+        "jev_on_regex_hits": jev_on_regex_hits,
         "jev_model": JEV_MODEL,
         "question_version": INJECTION_QUESTION_VERSION,
         "tau_review": TAU_REVIEW,
@@ -191,7 +210,15 @@ def main():
         help="Run regex-only, as the baseline was, even when TYPESAFE_API_KEY is set",
     )
 
+    parser.add_argument(
+        "--jev-on-regex-hits",
+        action="store_true",
+        help="Experiment: also ask Jev about texts the regex blocked (jev_p_shadow)",
+    )
+
     args = parser.parse_args()
+    if args.no_jev and args.jev_on_regex_hits:
+        parser.error("--jev-on-regex-hits needs Jev; it cannot be combined with --no-jev.")
 
     # The SDK logs every request at INFO, three lines each on stderr. Failures
     # are still recorded in the rows, so only its warnings are worth seeing.
@@ -215,16 +242,26 @@ def main():
     ]
 
     # Metadata first: started_at should be when the run began, not when it ended.
-    meta = run_metadata(args.cases, args.split, args.repeats, jev_enabled=not args.no_jev)
+    meta = run_metadata(
+        args.cases,
+        args.split,
+        args.repeats,
+        jev_enabled=not args.no_jev,
+        jev_on_regex_hits=args.jev_on_regex_hits,
+    )
 
     # Line 1 is the run's metadata, every line after it is a row. "x" refuses to
     # overwrite, so an existing results file is never lost. The file is opened
     # before any case runs: a clash must fail before Jev calls are spent, not after.
-    mode = "jev" if meta["jev_enabled"] else "regex"
+    mode = "regex" if not meta["jev_enabled"] else "shadow" if args.jev_on_regex_hits else "jev"
     out = RESULTS / f"{meta['started_at']}_{meta['git_sha']}_{args.split}_{mode}.jsonl"
     with open(out, "x", encoding="utf-8") as f:
         f.write(json.dumps(meta) + "\n")
-        rows = [run_case(case, repeat) for case in sample_cases for repeat in range(args.repeats)]
+        rows = [
+            run_case(case, repeat, args.jev_on_regex_hits)
+            for case in sample_cases
+            for repeat in range(args.repeats)
+        ]
         for row in rows:
             f.write(json.dumps(row) + "\n")
 
