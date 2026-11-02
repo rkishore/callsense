@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import subprocess
 import sys
 import time
@@ -192,6 +193,10 @@ def main():
 
     args = parser.parse_args()
 
+    # The SDK logs every request at INFO, three lines each on stderr. Failures
+    # are still recorded in the rows, so only its warnings are worth seeing.
+    logging.getLogger("typesafe_sdk").setLevel(logging.WARNING)
+
     # Jev is on unless asked off, and a run that expected it but found no key
     # stops here. Otherwise it would quietly run regex-only under Jev's name.
     if args.no_jev:
@@ -212,14 +217,14 @@ def main():
     # Metadata first: started_at should be when the run began, not when it ended.
     meta = run_metadata(args.cases, args.split, args.repeats, jev_enabled=not args.no_jev)
 
-    # Run cases
-    rows = [run_case(case, repeat) for case in sample_cases for repeat in range(args.repeats)]
-
-    # Write results: line 1 is the run's metadata, every line after it is a row.
-    # "x" refuses to overwrite, so an existing results file is never lost.
-    out = RESULTS / f"{meta['started_at']}_{meta['git_sha']}_{args.split}.jsonl"
+    # Line 1 is the run's metadata, every line after it is a row. "x" refuses to
+    # overwrite, so an existing results file is never lost. The file is opened
+    # before any case runs: a clash must fail before Jev calls are spent, not after.
+    mode = "jev" if meta["jev_enabled"] else "regex"
+    out = RESULTS / f"{meta['started_at']}_{meta['git_sha']}_{args.split}_{mode}.jsonl"
     with open(out, "x", encoding="utf-8") as f:
         f.write(json.dumps(meta) + "\n")
+        rows = [run_case(case, repeat) for case in sample_cases for repeat in range(args.repeats)]
         for row in rows:
             f.write(json.dumps(row) + "\n")
 
