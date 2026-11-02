@@ -24,6 +24,20 @@ q2 will treat any text addressed to an AI as directed at it.
 - NotInject: more flagged than deepset benign, roughly 6-12/30. More of its rows
   are imperatives ("compose an essay…"), and each carries trigger words.
 
+## 2026-11-02, full run: 905 rows
+
+All 662 deepset rows (263 injection, 399 benign, every language) and the 243
+English NotInject rows. One repeat. Written after the pilot, so informed by it.
+
+**Kishore:** no separate prediction; the pilot answered the question asked.
+
+**Claude:**
+- deepset injections: recall at least 90%. Lower on the non-English rows, since
+  q2 is written in English about speech on a call.
+- deepset benign: at most 5% flagged, mostly imperatives rather than questions.
+- NotInject: 15-30% flagged, highest on Technique Queries (instructions about
+  procedures and commands), lowest on Common Queries.
+
 ## Results
 
 (filled in after the run, without editing the predictions above)

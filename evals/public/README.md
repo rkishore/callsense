@@ -18,4 +18,5 @@ About a quarter of its rows are not in English (German, some Croatian and
 Spanish).
 
 Fetch the data with `uv run --no-project --with pyarrow python evals/public/fetch.py`.
-Predictions are written in PREDICTIONS.md before each run.
+Run with `.venv/bin/python evals/public/run.py` (about 900 Jev calls). Predictions are
+written in PREDICTIONS.md before each run.
