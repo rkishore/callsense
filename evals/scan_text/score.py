@@ -192,12 +192,20 @@ def main():
     result = score(rows)
 
     # The run's context first: a number without it cannot be compared to another.
-    print(f"run      {meta['started_at']}  split={meta['split']}  repeats={meta['repeats']}")
+    # Older files predate --context; they all scanned cases alone.
+    context = meta.get("context", "line")
+    print(
+        f"run      {meta['started_at']}  split={meta['split']}  repeats={meta['repeats']}"
+        f"  context={context}"
+    )
     print(
         f"code     {meta['git_sha']}" + ("  DIRTY: not reproducible" if meta["git_dirty"] else "")
     )
     print(f"cases    sha256 {meta['cases_sha256'][:12]}  rule {meta['rule_version']}")
     print(f"jev      {describe_jev(meta)}")
+    for name, scans in meta.get("call_controls", {}).items():
+        shown = [s.get("jev_p", s.get("error")) for s in scans]
+        print(f"control  {name} alone: {', '.join(map(str, shown))}")
     print()
 
     counts = result["counts"]

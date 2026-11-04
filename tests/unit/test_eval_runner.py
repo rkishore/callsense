@@ -70,6 +70,25 @@ def test_split_is_the_same_under_different_hash_seeds():
     assert splits("1") == splits("2")
 
 
+def test_call_context_scans_the_case_inside_its_call(monkeypatch):
+    # The same case must land in the same call every run, or line and call
+    # scores could not be compared across runs.
+    case = Case.model_validate_json(ROW)
+    scanned = []
+
+    def record(text):
+        scanned.append(text)
+        raise TimeoutError("stop here")
+
+    monkeypatch.setattr(run, "scan_text", record)
+    run_case(case, repeat=0, context="line")
+    run_case(case, repeat=0, context="call")
+    run_case(case, repeat=1, context="call")
+
+    before, after = run.CALLS[run.call_for("lit-001")]
+    assert scanned == ["hi", f"{before} hi {after}", f"{before} hi {after}"]
+
+
 def test_a_failing_scan_becomes_an_error_row(monkeypatch):
     # The row must keep its shape, so the scorer never checks for missing keys.
     case = Case.model_validate_json(ROW)
