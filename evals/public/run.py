@@ -2,12 +2,16 @@
 Run scan_text, as deployed, over the public datasets fetched by fetch.py.
 
     .venv/bin/python evals/public/run.py
+    .venv/bin/python evals/public/run.py --set harper_valley --split dev
 
-Writes results/<utc>_<sha>_public.jsonl: line 1 is the run's metadata, then one
-row per dataset row. deepset is run in full, both labels and every language;
-NotInject only where it is English, since scan_text expects English speech.
+Writes results/<utc>_<sha>_<set>.jsonl: line 1 is the run's metadata, then one
+row per dataset row. The public set: deepset in full, both labels and every
+language; NotInject only where it is English, since scan_text expects English
+speech. harper_valley: whole calls, all benign, split into dev and test as
+evals/scan_text splits its cases, so test is scored once.
 """
 
+import argparse
 import hashlib
 import json
 import logging
@@ -16,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from evals.scan_text.run import git_state
+from evals.scan_text.run import git_state, split_of
 from src.mcp_server import server
 from src.mcp_server.jev import INJECTION_QUESTION_VERSION, JEV_MODEL
 
@@ -58,6 +62,26 @@ def load_items() -> list[dict]:
     return items
 
 
+def load_calls(split: str) -> list[dict]:
+    """Harper Valley calls in one split. Benign: simulated bank tasks, no attacks."""
+    items = []
+    for line in (DATA / "harper_valley.jsonl").read_text().splitlines():
+        r = json.loads(line)
+        if split_of(r["sid"]) != split:
+            continue
+        items.append(
+            {
+                "source": "harper_valley",
+                "split": split,
+                "idx": r["sid"],
+                "label": "benign",
+                "category": ",".join(r["tasks"]),
+                "text": r["text"],
+            }
+        )
+    return items
+
+
 def scan(item: dict) -> dict:
     """scan_text on one row. Never raises: a failure becomes the row's error."""
     row = {
@@ -82,6 +106,13 @@ def scan(item: dict) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run scan_text over a public dataset.")
+    parser.add_argument("--set", choices=["public", "harper_valley"], default="public")
+    parser.add_argument("--split", choices=["dev", "test"], help="Required for harper_valley")
+    args = parser.parse_args()
+    if (args.set == "harper_valley") != (args.split is not None):
+        parser.error("--split is required for harper_valley, and only for it")
+
     logging.getLogger("typesafe_sdk").setLevel(logging.WARNING)
     if server.get_jev_client() is None:
         sys.exit("TYPESAFE_API_KEY is not set: these runs measure scan_text with Jev.")
@@ -91,6 +122,8 @@ def main() -> None:
         "started_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         "git_sha": sha,
         "git_dirty": dirty,
+        "set": args.set,
+        "split": args.split,
         "data_sha256": {
             f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(DATA.glob("*.jsonl"))
         },
@@ -99,10 +132,11 @@ def main() -> None:
         "tau_review": server.TAU_REVIEW,
         "tau_block": server.TAU_BLOCK,
     }
-    items = load_items()
+    items = load_items() if args.set == "public" else load_calls(args.split)
+    name = args.set if args.split is None else f"{args.set}_{args.split}"
 
     RESULTS.mkdir(exist_ok=True)
-    out = RESULTS / f"{meta['started_at']}_{sha}_public.jsonl"
+    out = RESULTS / f"{meta['started_at']}_{sha}_{name}.jsonl"
     # Opened before any row runs, so a name clash fails before Jev calls are spent.
     with open(out, "x", encoding="utf-8") as f:
         f.write(json.dumps(meta) + "\n")

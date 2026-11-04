@@ -9,8 +9,15 @@ the guard generalises; ship decisions stay on evals/scan_text.
 |---|---|---|---|---|
 | deepset/prompt-injections | 662 (injection and benign) | recall on its injections; its benign rows as a control: addressed to an AI, without trigger words | Apache-2.0 | https://huggingface.co/datasets/deepset/prompt-injections |
 | NotInject | 339, all benign, built on trigger words | false positives from trigger words | MIT | https://huggingface.co/datasets/leolee99/NotInject (Li, Liu and Xiao, arXiv 2410.22770) |
+| Gridspace-Stanford Harper Valley | 1,446 simulated bank calls, all benign | false positives on whole calls between two people, split dev/test | CC-BY-4.0 | https://github.com/cricketclub/gridspace-stanford-harper-valley (commit 0bd721e) |
 
-Files under pilot/ and results/ quote rows from both sets, under their licences.
+Files under pilot/ and results/ quote rows from these sets, under their licences.
+
+Harper Valley is the closest of the three to CallSense: two people on a call,
+scanned as the pipeline's full_text. Its false-positive rate is the one to quote
+for calls, beside evals/scan_text's hard negatives (2026-11-04: 1 of 989 dev,
+0 of 457 test). Its limits: simulated and scripted, short (median 97 words), one
+domain (banking), and Gridspace's ASR rather than Whisper.
 
 deepset's card documents neither its labels nor its sources. A 30-row spot
 check against LABELLING.md found 27 agreements and 3 ambiguous rows (pilot/).
@@ -35,5 +42,6 @@ thresholds on it. False positives on calls are measured by evals/scan_text's
 hard negatives.
 
 Fetch the data with `uv run --no-project --with pyarrow python evals/public/fetch.py`.
-Run with `.venv/bin/python evals/public/run.py` (about 900 Jev calls). Predictions are
+Run with `.venv/bin/python evals/public/run.py` (about 900 Jev calls), and Harper
+Valley with `--set harper_valley --split dev` (989 calls; test 457, run once). Predictions are
 written in PREDICTIONS.md before each run.
