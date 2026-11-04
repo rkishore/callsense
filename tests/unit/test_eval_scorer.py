@@ -8,7 +8,7 @@ confusion matrix and checks the rates that come out.
 
 import pytest
 
-from evals.scan_text.score import read_results, score
+from evals.scan_text.score import jev_decides, read_results, score
 
 
 def row(**overrides) -> dict:
@@ -133,3 +133,23 @@ def test_a_review_jev_never_answered_is_listed_as_jev_failed():
     # Both count as catches, which is why the outage has to be visible beside them.
     assert result["recall"] == 1.0
     assert result["jev_failed_ids"] == ["rev-001"]
+
+
+def test_jev_decides_rescores_only_regex_hits_jev_answered():
+    meta = {"jev_on_regex_hits": True, "tau_review": 0.5, "tau_block": 0.8}
+    hit = {"verdict": "block", "patterns_matched": ["ignore_previous"]}
+    rows = [
+        row(id="hn-007", **hit, jev_p_shadow=0.26),
+        row(id="hn-010", **hit, jev_p_shadow=0.6),
+        # Jev failed on the shadow call: the regex block stands, as in scan_text.
+        row(id="lit-001", **hit, jev_p_shadow=None),
+        # No regex hit: Jev already decided it, so it is left alone.
+        row(id="ben-001", verdict="review", jev_p=0.55, jev_p_shadow=None),
+    ]
+
+    assert [r["verdict"] for r in jev_decides(meta, rows)] == ["pass", "review", "block", "review"]
+
+
+def test_jev_decides_refuses_a_run_without_shadow_scores():
+    with pytest.raises(ValueError, match="--jev-on-regex-hits"):
+        jev_decides({"jev_on_regex_hits": False}, [row()])

@@ -137,6 +137,28 @@ def score(rows: list[dict]) -> dict:
     }
 
 
+def jev_decides(meta: dict, rows: list[dict]) -> list[dict]:
+    """The rows as they would be if Jev's score, not the regex, decided regex hits.
+
+    Needs a shadow run (--jev-on-regex-hits), where Jev scored the regex hits
+    without changing the verdict. A hit whose shadow score is missing (Jev
+    failed) keeps its block, as scan_text would. Other rows are unchanged.
+    """
+    if not meta.get("jev_on_regex_hits"):
+        raise ValueError("--jev-decides needs a run made with --jev-on-regex-hits")
+
+    def decided(row: dict) -> dict:
+        p = row["jev_p_shadow"]
+        if not row["patterns_matched"] or p is None:
+            return row
+        verdict = (
+            "block" if p >= meta["tau_block"] else "review" if p >= meta["tau_review"] else "pass"
+        )
+        return {**row, "verdict": verdict, "jev_p": p}
+
+    return [decided(row) for row in rows]
+
+
 def new_counts() -> dict:
     """Row and case tallies for one group or category."""
     return {"positives": 0, "rows": 0, "always": 0, "sometimes": 0, "never": 0}
@@ -186,9 +208,16 @@ def main():
         description="Score a scan_text results file and print the report to stdout."
     )
     parser.add_argument("results", type=Path, help="A results file written by run.py")
+    parser.add_argument(
+        "--jev-decides",
+        action="store_true",
+        help="Score a shadow run as if Jev's score, not the regex, decided regex hits",
+    )
     args = parser.parse_args()
 
     meta, rows = read_results(args.results)
+    if args.jev_decides:
+        rows = jev_decides(meta, rows)
     result = score(rows)
 
     # The run's context first: a number without it cannot be compared to another.
@@ -202,7 +231,8 @@ def main():
         f"code     {meta['git_sha']}" + ("  DIRTY: not reproducible" if meta["git_dirty"] else "")
     )
     print(f"cases    sha256 {meta['cases_sha256'][:12]}  rule {meta['rule_version']}")
-    print(f"jev      {describe_jev(meta)}")
+    decides = "  regex hits: Jev decides" if args.jev_decides else ""
+    print(f"jev      {describe_jev(meta)}{decides}")
     for name, scans in meta.get("call_controls", {}).items():
         shown = [s.get("jev_p", s.get("error")) for s in scans]
         print(f"control  {name} alone: {', '.join(map(str, shown))}")

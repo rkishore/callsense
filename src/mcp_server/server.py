@@ -2,10 +2,10 @@
 MCP server — CallSense's guards, exposed as tools. Scope in docs/mcp-scope.md.
 
 One tool so far: `scan_text`, the pipeline's stage 3 (injection detection) and
-stage 4 (PII redaction) over arbitrary text, with Jev as a second injection
-check on what the regexes let through. No Whisper, no pipeline LLM and no
+stage 4 (PII redaction) over arbitrary text. Jev decides the verdict; the
+regexes are recorded beside it and decide only when Jev cannot. No Whisper, no pipeline LLM and no
 database, so the server starts in well under a second. TYPESAFE_API_KEY is
-optional: without it, scan_text runs regex-only.
+optional: without it, scan_text runs regex-only, and a regex match blocks.
 
 stdio transport: the client launches this process and talks JSON-RPC over its
 stdin/stdout. That is why get_logger writes to stderr — anything printed to
@@ -52,9 +52,9 @@ Verdict = Literal["block", "review", "pass"]
 
 class InjectionFindings(BaseModel):
     patterns_matched: list[str] = Field(description="Names of the regex patterns that matched")
-    # Null with verdict block: the regex matched, so Jev was not asked. Null with
-    # review: Jev failed, and scan_text failed closed. Null with pass: no
-    # TYPESAFE_API_KEY, so the scan was regex-only.
+    # Null when Jev gave no score: it failed (verdict block if a pattern matched,
+    # else review: scan_text fails closed), or there is no TYPESAFE_API_KEY and
+    # the scan was regex-only (block on a match, else pass).
     jev_p: float | None = Field(
         default=None,
         description="Jev's injection score from 0 to 1, or null if Jev was not asked or failed",
@@ -115,7 +115,7 @@ server = MCPServer(
     annotations=ToolAnnotations(
         # No idempotentHint: the spec gives it meaning only when readOnlyHint is false.
         readOnlyHint=True,
-        # Jev is a third-party API, reached for any text the regexes do not match.
+        # Jev is a third-party API, reached for every text when a key is set.
         openWorldHint=True,
     ),
 )
@@ -131,30 +131,33 @@ def scan_text(
 ) -> ScanTextResult:
     """Check text for prompt injection and redact PII, as CallSense does before any LLM call.
 
-    Returns verdict "block" if any of the 22 injection patterns match. Otherwise
     Jev scores the PII-redacted text: "block" or "review" above its thresholds,
-    else "pass". If Jev cannot be reached the verdict is "review", never "pass".
-    Also returns the matched pattern names, Jev's score and the redacted text.
+    else "pass". The 22 injection patterns are reported but decide the verdict
+    only when Jev cannot: then a match gives "block", and no match "review"
+    (or "pass" when no Jev key is set). Also returns Jev's score and the
+    redacted text.
     """
     # Same order as the pipeline: injection on the raw text, then redaction.
     injection = detect_injection(text)
     pii = detect_and_redact_pii(text)
 
+    # Jev decides even when a pattern matched: the patterns also match ordinary
+    # call speech ("forget everything I said about the refund"), and Jev passes
+    # those (evals/scan_text/PREDICTIONS.md, option 2). The cost is a Jev call on
+    # every text, matched or not, sending attacker-written text to a third party.
+    # A regex match still decides when Jev cannot.
+    fallback: Verdict = "block" if injection.injection_detected else "review"
     jev_p = None
-    if injection.injection_detected:
-        # Jev is not asked: the call would cost money and send attacker-controlled
-        # text to a third party, only to confirm what the regex already found.
-        verdict = "block"
-    elif (client := get_jev_client()) is None:
-        verdict = "pass"
+    if (client := get_jev_client()) is None:
+        verdict = "block" if injection.injection_detected else "pass"
     else:
         try:
             # Redacted text only: Jev is a provider, and no provider sees raw PII.
             jev_p = jev.ask_jev(client, pii.redacted_text)
         except Exception as e:
             # Fail closed. The type only: the message could quote the text.
-            logger.warning("Jev failed (%s): verdict is review", type(e).__name__)
-            verdict = "review"
+            logger.warning("Jev failed (%s): verdict is %s", type(e).__name__, fallback)
+            verdict = fallback
         else:
             verdict = verdict_for(jev_p)
 
