@@ -8,7 +8,7 @@ the guard generalises; ship decisions stay on evals/scan_text.
 | Set | Rows | Used for | Licence | Source |
 |---|---|---|---|---|
 | deepset/prompt-injections | 662 (injection and benign) | recall on its injections; its benign rows as a control: addressed to an AI, without trigger words | Apache-2.0 | https://huggingface.co/datasets/deepset/prompt-injections |
-| NotInject | 339, all benign, built on trigger words | false positives from trigger words | MIT | https://huggingface.co/datasets/leolee99/NotInject (Li, Liu and Xiao, arXiv 2410.22770) |
+| NotInject | 339, all benign, built on trigger words | false positives from trigger words | MIT | https://huggingface.co/datasets/leolee99/NotInject (Li and Liu, arXiv 2410.22770) |
 | Gridspace-Stanford Harper Valley | 1,446 simulated bank calls, all benign | false positives on whole calls between two people, split dev/test | CC-BY-4.0 | https://github.com/cricketclub/gridspace-stanford-harper-valley (commit 0bd721e) |
 | AIxBlock 92k call-centre transcripts | 2,025 real calls drawn from 90,444 (225 per domain, 9 domains), all benign | false positives on real calls, split dev/test | CC-BY-NC-4.0, research only, no redistribution: results keep ids and scores, never text | https://huggingface.co/datasets/AIxBlock/92k-real-world-call-center-scripts-english (revision 9d40ca1) |
 
