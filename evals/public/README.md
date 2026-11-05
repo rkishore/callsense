@@ -52,5 +52,8 @@ Fetch the data with `uv run --no-project --with pyarrow python evals/public/fetc
 Run with `.venv/bin/python evals/public/run.py` (about 900 Jev calls), and Harper
 Valley with `--set harper_valley --split dev` (989 calls; test 457, run once),
 AIxBlock with `--set aixblock --split dev` (1,406; test 619). Fetching AIxBlock
-downloads about 1.4 GB of zips into data/aixblock. Predictions are
+downloads about 1.4 GB of zips into data/aixblock.
+`--set deepset_in_calls` puts each deepset injection inside one Harper Valley
+call (263 Jev calls): recall 87.5% inside calls, the same as alone, with 8
+rows gained and 8 lost (2026-11-04). Predictions are
 written in PREDICTIONS.md before each run.

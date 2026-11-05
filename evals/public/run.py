@@ -10,7 +10,8 @@ language; NotInject only where it is English, since scan_text expects English
 speech. harper_valley and aixblock: whole calls, all benign, split into dev
 and test as evals/scan_text splits its cases, so test is scored once.
 aixblock rows are written without their text (its licence forbids
-redistribution).
+redistribution). deepset_in_calls: each deepset injection inside one Harper
+Valley call, to compare with deepset scanned alone.
 """
 
 import argparse
@@ -97,6 +98,55 @@ def load_calls(name: str, split: str) -> list[dict]:
     return items
 
 
+POSITIONS = ("start", "middle", "end")
+
+
+def pick(key: str, n: int) -> int:
+    """A fixed choice among n, by hash of key: the same on every run."""
+    return int(hashlib.sha256(key.encode()).hexdigest(), 16) % n
+
+
+def insert(text: str, line: str, position: str) -> str:
+    """The call with the line added as one more stretch of speech."""
+    if position == "start":
+        return f"{line} {text}"
+    if position == "end":
+        return f"{text} {line}"
+    words = text.split()
+    half = len(words) // 2
+    return " ".join([*words[:half], line, *words[half:]])
+
+
+def load_deepset_in_calls() -> list[dict]:
+    """Each deepset injection inside one Harper Valley call, at one position.
+
+    The call and the position are picked by hash of the row, so the same
+    injection lands in the same place on every run. Harper Valley calls score
+    0.02 alone (2026-11-04), so a flag comes from the injection, not the call.
+    """
+    calls = [json.loads(line) for line in (DATA / "harper_valley.jsonl").read_text().splitlines()]
+    items = []
+    for line in (DATA / "deepset.jsonl").read_text().splitlines():
+        r = json.loads(line)
+        if not r["label"]:
+            continue
+        key = f"{r['split']}-{r['idx']}"
+        call = calls[pick(f"call:{key}", len(calls))]
+        position = POSITIONS[pick(f"position:{key}", len(POSITIONS))]
+        items.append(
+            {
+                "source": "deepset_in_calls",
+                "split": r["split"],
+                "idx": r["idx"],
+                "label": "injection",
+                "category": position,
+                "call": call["sid"],
+                "text": insert(call["text"], r["text"], position),
+            }
+        )
+    return items
+
+
 def scan(item: dict) -> dict:
     """scan_text on one row. Never raises: a failure becomes the row's error."""
     row = {
@@ -124,7 +174,9 @@ def scan(item: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run scan_text over a public dataset.")
-    parser.add_argument("--set", choices=["public", *CALL_SETS], default="public")
+    parser.add_argument(
+        "--set", choices=["public", "deepset_in_calls", *CALL_SETS], default="public"
+    )
     parser.add_argument("--split", choices=["dev", "test"], help="Required for the call sets")
     args = parser.parse_args()
     if (args.set in CALL_SETS) != (args.split is not None):
@@ -149,7 +201,12 @@ def main() -> None:
         "tau_review": server.TAU_REVIEW,
         "tau_block": server.TAU_BLOCK,
     }
-    items = load_items() if args.set == "public" else load_calls(args.set, args.split)
+    if args.set == "public":
+        items = load_items()
+    elif args.set == "deepset_in_calls":
+        items = load_deepset_in_calls()
+    else:
+        items = load_calls(args.set, args.split)
     name = args.set if args.split is None else f"{args.set}_{args.split}"
 
     RESULTS.mkdir(exist_ok=True)
