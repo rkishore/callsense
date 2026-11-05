@@ -4,7 +4,9 @@ text scan_text sees.
 """
 
 import json
+import zipfile
 
+from evals.public import fetch
 from evals.public.fetch import harper_valley_calls
 
 
@@ -34,3 +36,26 @@ def test_a_call_is_its_machine_transcript_in_time_order_without_labels(tmp_path)
             "text": "harper valley bank i lost my card i can help",
         }
     ]
+
+
+def test_aixblock_sample_drops_duplicates_and_empty_calls_and_caps_each_domain(
+    tmp_path, monkeypatch
+):
+    # Two zips of one domain, the second repeating a call from the first, as
+    # AIxBlock's re-uploads do. An empty call and a macOS sidecar are skipped.
+    monkeypatch.setattr(fetch, "AIXBLOCK_ZIPS", {"a.zip": "auto", "b.zip": "auto"})
+    monkeypatch.setattr(fetch, "AIXBLOCK_PER_DOMAIN", 2)
+    with zipfile.ZipFile(tmp_path / "a.zip", "w") as zf:
+        for i, text in enumerate(["one", "two", "three", ""]):
+            zf.writestr(f"a/call_555123456{i}.json", json.dumps({"text": text}))
+        zf.writestr("__MACOSX/a/._call_5551234560.json", "not json")
+    with zipfile.ZipFile(tmp_path / "b.zip", "w") as zf:
+        zf.writestr("b/copy.json", json.dumps({"text": "one"}))
+
+    sample, sizes = fetch.aixblock_calls(tmp_path)
+
+    assert sizes == {"auto": 3}
+    assert len(sample) == 2
+    # Ids are hashes: the phone-like file names never leave data/.
+    assert all("555" not in call["id"] and len(call["id"]) == 16 for call in sample)
+    assert sample == sorted(sample, key=lambda c: c["id"])

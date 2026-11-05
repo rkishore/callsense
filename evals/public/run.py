@@ -7,8 +7,10 @@ Run scan_text, as deployed, over the public datasets fetched by fetch.py.
 Writes results/<utc>_<sha>_<set>.jsonl: line 1 is the run's metadata, then one
 row per dataset row. The public set: deepset in full, both labels and every
 language; NotInject only where it is English, since scan_text expects English
-speech. harper_valley: whole calls, all benign, split into dev and test as
-evals/scan_text splits its cases, so test is scored once.
+speech. harper_valley and aixblock: whole calls, all benign, split into dev
+and test as evals/scan_text splits its cases, so test is scored once.
+aixblock rows are written without their text (its licence forbids
+redistribution).
 """
 
 import argparse
@@ -62,20 +64,33 @@ def load_items() -> list[dict]:
     return items
 
 
-def load_calls(split: str) -> list[dict]:
-    """Harper Valley calls in one split. Benign: simulated bank tasks, no attacks."""
+# Call corpora: file, id field, and what goes in category. All benign: Harper
+# Valley is simulated bank tasks, AIxBlock real customer-service calls.
+CALL_SETS = {
+    "harper_valley": ("harper_valley.jsonl", "sid", lambda r: ",".join(r["tasks"])),
+    "aixblock": ("aixblock.jsonl", "id", lambda r: r["domain"]),
+}
+
+# Sets whose text may not be redistributed (AIxBlock: CC-BY-NC, no
+# redistribution). Their results rows keep the id and scores, never the text.
+NO_TEXT_IN_RESULTS = {"aixblock"}
+
+
+def load_calls(name: str, split: str) -> list[dict]:
+    """The calls of one call corpus in one split."""
+    filename, id_field, category = CALL_SETS[name]
     items = []
-    for line in (DATA / "harper_valley.jsonl").read_text().splitlines():
+    for line in (DATA / filename).read_text().splitlines():
         r = json.loads(line)
-        if split_of(r["sid"]) != split:
+        if split_of(r[id_field]) != split:
             continue
         items.append(
             {
-                "source": "harper_valley",
+                "source": name,
                 "split": split,
-                "idx": r["sid"],
+                "idx": r[id_field],
                 "label": "benign",
-                "category": ",".join(r["tasks"]),
+                "category": category(r),
                 "text": r["text"],
             }
         )
@@ -102,16 +117,18 @@ def scan(item: dict) -> dict:
         row["jev_p"] = result.injection.jev_p
         row["patterns_matched"] = result.injection.patterns_matched
     row["latency_ms"] = round((time.perf_counter() - start) * 1000, 2)
+    if item["source"] in NO_TEXT_IN_RESULTS:
+        del row["text"]
     return row
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run scan_text over a public dataset.")
-    parser.add_argument("--set", choices=["public", "harper_valley"], default="public")
-    parser.add_argument("--split", choices=["dev", "test"], help="Required for harper_valley")
+    parser.add_argument("--set", choices=["public", *CALL_SETS], default="public")
+    parser.add_argument("--split", choices=["dev", "test"], help="Required for the call sets")
     args = parser.parse_args()
-    if (args.set == "harper_valley") != (args.split is not None):
-        parser.error("--split is required for harper_valley, and only for it")
+    if (args.set in CALL_SETS) != (args.split is not None):
+        parser.error("--split is required for the call sets, and only for them")
 
     logging.getLogger("typesafe_sdk").setLevel(logging.WARNING)
     if server.get_jev_client() is None:
@@ -132,7 +149,7 @@ def main() -> None:
         "tau_review": server.TAU_REVIEW,
         "tau_block": server.TAU_BLOCK,
     }
-    items = load_items() if args.set == "public" else load_calls(args.split)
+    items = load_items() if args.set == "public" else load_calls(args.set, args.split)
     name = args.set if args.split is None else f"{args.set}_{args.split}"
 
     RESULTS.mkdir(exist_ok=True)

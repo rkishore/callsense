@@ -8,9 +8,12 @@ dependency: uv runs this in a throwaway environment. data/ is gitignored; the
 datasets are fetched from Hugging Face and GitHub, not copied into the repo.
 """
 
+import hashlib
 import json
 import subprocess
+import urllib.parse
 import urllib.request
+import zipfile
 from io import BytesIO
 from pathlib import Path
 
@@ -76,6 +79,86 @@ def fetch_harper_valley() -> list[dict]:
     return harper_valley_calls(repo)
 
 
+# AIxBlock 92k real-world call-centre transcripts: CC-BY-NC-4.0, research only,
+# no redistribution. Only ids, domains and scores are committed, never text.
+# Pinned to a revision. About 1.4 GB of zips, kept in data/aixblock.
+AIXBLOCK = "https://huggingface.co/datasets/AIxBlock/92k-real-world-call-center-scripts-english"
+AIXBLOCK_REVISION = "9d40ca13f3e173ad815c89bb8fff144be3ae3146"
+# Zip -> domain. The two re-uploads repeat calls from the zips they replace, so
+# they share a domain and duplicate texts are dropped.
+AIXBLOCK_ZIPS = {
+    "(re-uploaded)PII_Redacted_Transcripts_aixblock-automotive-stereo-inbound-104h.zip": (
+        "automotive_inbound"
+    ),
+    "(reupload)PII_redacted_auto_insurance_script.zip": "auto_insurance_inbound",
+    "auto_insurance_customer_service_inbound.zip": "auto_insurance_inbound",
+    "automotive_and_healthcare_insurance_inbound.zip": "auto_and_health_insurance_inbound",
+    "automotive_inbound.zip": "automotive_inbound",
+    "customer_service_general_inbound.zip": "customer_service_general_inbound",
+    "home_ervice_inbound&telecom _outbound.zip": "home_service_inbound_and_telecom_outbound",
+    "home_service_inbound.zip": "home_service_inbound",
+    "insurance_outbound.zip": "insurance_outbound",
+    "medical_equipment_outbound.zip": "medical_equipment_outbound",
+    "medicare_inbound.zip": "medicare_inbound",
+}
+# Calls drawn per domain. Medicare is 64% of the corpus; an equal draw keeps it
+# from setting the rate alone. Rates are also reported weighted by domain size.
+AIXBLOCK_PER_DOMAIN = 225
+
+
+def aixblock_id(zip_name: str, member: str) -> str:
+    """A call's id: a hash of where it is stored. File names hold what look like
+    phone numbers, so they never leave data/."""
+    return hashlib.sha256(f"{zip_name}/{member}".encode()).hexdigest()[:16]
+
+
+def aixblock_calls(folder: Path) -> tuple[list[dict], dict[str, int]]:
+    """The sample, and how many distinct calls each domain has.
+
+    A call's text is AIxBlock's "text" field: the whole call, no speaker labels,
+    already PII-redacted by them. Duplicates (same text) and empty or unreadable
+    files are dropped. Within a domain, calls are ordered by id, a hash, and the
+    first AIXBLOCK_PER_DOMAIN taken: a fixed draw, not a convenient one.
+    """
+    by_domain: dict[str, list[dict]] = {}
+    seen: set[str] = set()
+    for zip_name, domain in AIXBLOCK_ZIPS.items():
+        with zipfile.ZipFile(folder / zip_name) as zf:
+            for member in sorted(zf.namelist()):
+                if not member.endswith(".json") or member.startswith("__MACOSX") or "/._" in member:
+                    continue
+                try:
+                    text = json.loads(zf.read(member)).get("text") or ""
+                except (ValueError, AttributeError):
+                    continue
+                digest = hashlib.sha256(text.encode()).hexdigest()
+                if not text.strip() or digest in seen:
+                    continue
+                seen.add(digest)
+                by_domain.setdefault(domain, []).append(
+                    {"id": aixblock_id(zip_name, member), "domain": domain, "text": text}
+                )
+    sample = [
+        call
+        for calls in by_domain.values()
+        for call in sorted(calls, key=lambda c: c["id"])[:AIXBLOCK_PER_DOMAIN]
+    ]
+    return sample, {domain: len(calls) for domain, calls in sorted(by_domain.items())}
+
+
+def fetch_aixblock() -> list[dict]:
+    """Download the zips not already in data/aixblock, then draw the sample."""
+    folder = DATA / "aixblock"
+    folder.mkdir(exist_ok=True)
+    for zip_name in AIXBLOCK_ZIPS:
+        if not (folder / zip_name).exists():
+            url = f"{AIXBLOCK}/resolve/{AIXBLOCK_REVISION}/{urllib.parse.quote(zip_name)}"
+            urllib.request.urlretrieve(url, folder / zip_name)
+    sample, sizes = aixblock_calls(folder)
+    (DATA / "aixblock_domains.json").write_text(json.dumps(sizes, indent=1) + "\n")
+    return sample
+
+
 def write_rows(name: str, rows: list[dict]) -> None:
     out = DATA / f"{name}.jsonl"
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
@@ -95,6 +178,7 @@ def main() -> None:
             rows += [{"split": split, "idx": i, **r} for i, r in enumerate(table.to_pylist())]
         write_rows(name, rows)
     write_rows("harper_valley", fetch_harper_valley())
+    write_rows("aixblock", fetch_aixblock())
 
 
 if __name__ == "__main__":
